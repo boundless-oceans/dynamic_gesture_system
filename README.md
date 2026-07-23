@@ -2,14 +2,14 @@
 
 基于 DSTE-Net（Dual-scale Spatial-Temporal Excitation Network）的实时动态手势识别桌面应用。
 
-## 📋 功能
+## 一、功能
 
-- 🎥 摄像头实时画面预览
-- ✋ 动态手势实时识别（基于 8 帧滑动窗口）
-- 📊 识别结果展示（手势类别 + 置信度）
-- 🏆 Top-3 候选结果展示
+- 摄像头实时画面预览
+- 动态手势实时识别（基于 8 帧滑动窗口）
+- 识别结果展示（手势类别 + 置信度）
+- Top-3 候选结果展示
 
-## 📁 目录结构
+## 二、目录结构
 
 ```
 dynamic_gesture_system/
@@ -17,6 +17,7 @@ dynamic_gesture_system/
 ├── requirements.txt              # pip 依赖清单
 ├── environment.yml               # conda 环境配置
 ├── .gitignore                    # Git 忽略规则
+├── .agents                       # AI 协作状态文件
 ├── main.py                       # 应用入口
 │
 ├── src/                          # 源代码
@@ -45,7 +46,7 @@ dynamic_gesture_system/
     └── gestures.json             # 手势标签中英文对照
 ```
 
-## 🏗️ 系统架构
+## 三、系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -63,7 +64,7 @@ dynamic_gesture_system/
 └─────────────────────────────────────────────────────────┘
 ```
 
-## 🔄 数据流
+## 四、数据流
 
 ```
                         ┌──────────────┐
@@ -108,7 +109,7 @@ dynamic_gesture_system/
                         └──────────────┘
 ```
 
-## 🚀 快速开始
+## 五、快速开始
 
 ### 环境要求
 
@@ -147,7 +148,7 @@ conda activate gesture
 python main.py
 ```
 
-## 📊 手势类别
+## 六、手势类别
 
 系统支持 83 种动态手势（基于 EgoGesture 数据集），包括：
 
@@ -158,7 +159,7 @@ python main.py
 
 > 完整列表见 `assets/gestures.json`
 
-## 📄 参考
+## 七、参考
 
 - DSTE-Net 论文：Dual-scale Spatial-Temporal Excitation Network for Dynamic Gesture Recognition
 - TSM 框架：Temporal Shift Module for Efficient Video Understanding (arXiv:1811.08383)

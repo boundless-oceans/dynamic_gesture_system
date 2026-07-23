@@ -1,0 +1,40 @@
+"""全局配置"""
+
+import os
+
+# ---- 项目路径 ----
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---- 模型 ----
+# 权重文件路径（训好以后放这里）
+MODEL_WEIGHTS_PATH = os.path.join(ROOT_DIR, "weights", "dste_net.pth")
+# 类别数（EgoGesture: 83）
+NUM_CLASSES = 83
+# Backbone
+ARCH = "resnet50"
+
+# ---- 推理参数 ----
+NUM_SEGMENTS = 8              # 每次推理取 8 帧
+INFERENCE_INTERVAL_MS = 200   # 推理间隔（毫秒）
+
+# ---- 图像预处理 ----
+INPUT_SIZE = 224              # 送入网络尺寸
+SCALE_SIZE = 256              # 短边缩放
+INPUT_MEAN = [0.485, 0.456, 0.406]
+INPUT_STD = [0.229, 0.224, 0.225]
+
+# ---- 摄像头 ----
+CAMERA_INDEX = 0              # 0=默认摄像头
+CAMERA_WIDTH = 640
+CAMERA_HEIGHT = 480
+CAMERA_FPS = 30               # 采集帧率
+
+# ---- 帧缓冲 ----
+FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
+
+# ---- 去抖 ----
+CONSISTENCY_COUNT = 3         # 连续 N 次相同结果才输出
+
+# ---- 手势标签（EgoGesture 83类，占位，后续从 assets/gestures.json 读取）----
+# 完整标签列表见 DSTE-NET代码 数据集标注文件
+GESTURE_LABELS: dict = {}
