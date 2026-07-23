@@ -1,0 +1,19 @@
+# DSTE-Net 动态手势识别系统 - 依赖清单
+# 安装方式: pip install -r requirements.txt
+
+# GUI 框架
+PySide6>=6.5.0
+
+# 摄像头采集
+opencv-python>=4.8.0
+
+# 深度学习
+torch>=2.0.0
+torchvision>=0.15.0
+
+# 图像处理
+numpy>=1.24.0
+Pillow>=9.0.0
+
+# 训练监控（DSTE-Net 代码依赖）
+tensorboardX>=2.6
