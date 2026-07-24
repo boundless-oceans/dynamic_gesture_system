@@ -17,7 +17,7 @@ dynamic_gesture_system/
 ├── requirements.txt              # pip 依赖清单
 ├── environment.yml               # conda 环境配置
 ├── .gitignore                    # Git 忽略规则
-├── .agents                       # AI 协作状态文件
+├── agents.md                     # AI 协作状态文件
 ├── main.py                       # 应用入口
 │
 ├── src/                          # 源代码
@@ -159,7 +159,24 @@ python main.py
 
 > 完整列表见 `assets/gestures.json`
 
-## 七、参考
+## 八、测试
+
+各功能模块均配有独立测试文件，可单独运行验证：
+
+| 测试文件 | 对应功能 | 说明 |
+|------|:--:|------|
+| `test_frame_buffer.py` | F2a | 帧缓冲基本操作、溢出、线程安全 |
+| `test_f1.py` | F1 + F2a | 摄像头采集 + 帧缓冲联调，5 秒自动退出 |
+
+运行方式：
+
+```bash
+# 激活环境后
+python test_frame_buffer.py
+python test_f1.py
+```
+
+## 九、参考
 
 - DSTE-Net 论文：Dual-scale Spatial-Temporal Excitation Network for Dynamic Gesture Recognition
 - TSM 框架：Temporal Shift Module for Efficient Video Understanding (arXiv:1811.08383)
