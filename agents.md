@@ -13,7 +13,7 @@
 |------|------|------|:--:|
 | F2b | 模型加载与推理 | DSTE-Net 模型构建、权重加载、predict() 接口 | 已完成 |
 | F2a | 帧缓冲队列 | 线程安全环形队列，保持最近 N 帧，支持取 8 帧 | 已完成 |
-| F1 | 摄像头预览 | OpenCV 采集 → QThread → 画面显示 | 待实现 |
+| F1 | 摄像头预览 | OpenCV 采集 → QThread → 画面显示 | 已完成 |
 | F2 | 推理线程 | 从帧缓冲取 8 帧 → 预处理 → 推理 → emit 结果信号 | 待实现 |
 | F3 | 结果展示 | 手势类别 + 置信度进度条 + Top-3 列表 | 待实现 |
 | F4 | 主窗口 | 组装 F1 + F3，信号槽串联 | 待实现 |
@@ -96,3 +96,24 @@ F2b → F2a → F1 → F2 → F3 → F4 → F0 → F5 → F6
 | `get_latest(n)` | 推理线程 | 取最近 n 帧，不足返回 []，线程安全 |
 | `size` | 任意 | 属性，当前缓冲帧数 |
 | `clear()` | 任意 | 清空缓冲 |
+
+### F1: 摄像头预览
+
+文件: src/core/camera.py
+类: CameraThread(QThread)
+
+| 方法/信号 | 调用方 | 描述 |
+|------|------|------|
+| `run()` | 自动 | 采集循环: BGR->RGB, 镜像, 存共享区, 推 FrameBuffer, emit frame_ready |
+| `get_frame()` | UI 定时器 | 主线程安全读取当前帧 |
+| `stop()` | UI | 停止采集并等待线程退出 |
+| `frame_ready` (Signal) | CameraWidget | 通知 UI 有新帧可读 |
+
+文件: src/ui/camera_widget.py
+类: CameraWidget(QWidget)
+
+| 方法 | 调用方 | 描述 |
+|------|------|------|
+| `start(frame_buffer)` | 外部 | 启动 CameraThread + 30ms 定时器 |
+| `stop()` | 外部 | 停止采集和显示 |
+| `_update_frame()` | QTimer | 从 CameraThread 取帧 -> QPixmap -> QLabel |
