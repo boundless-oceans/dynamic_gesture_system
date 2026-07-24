@@ -17,7 +17,7 @@ dynamic_gesture_system/
 ├── requirements.txt              # pip 依赖清单
 ├── environment.yml               # conda 环境配置
 ├── .gitignore                    # Git 忽略规则
-├── .agents                       # AI 协作状态文件
+├── agents.md                     # AI 协作状态文件
 ├── main.py                       # 应用入口
 │
 ├── src/                          # 源代码
