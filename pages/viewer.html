@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>3D 交互展示</title>
+<style>
+    body { margin: 0; overflow: hidden; background: radial-gradient(#e0f2f7, #5ba7d1); }
+    #container { width: 100vw; height: 100vh; }
+    .back-btn {
+        position: fixed; bottom: 30px; right: 40px;
+        width: 60px; height: 60px;
+        background: white; border: none; border-radius: 50%;
+        cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        font-size: 24px; z-index: 100;
+    }
+</style>
+</head>
+<body>
+<div id="container"></div>
+<button class="back-btn" onclick="goHome()">&#x21A9;</button>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+let scene, camera, renderer, object;
+
+function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.z = 5;
+
+    renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('container').appendChild(renderer.domElement);
+
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(1, 1, 1);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    const geo = new THREE.TorusKnotGeometry(1, 0.3, 128, 32);
+    const mat = new THREE.MeshStandardMaterial({color: 0xff7700, roughness: 0.3, metalness: 0.7});
+    object = new THREE.Mesh(geo, mat);
+    scene.add(object);
+
+    animate();
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    object.rotation.y += 0.003;
+    renderer.render(scene, camera);
+}
+
+// 手势控制接口
+function zoomIn()  { camera.position.z = Math.max(1.5, camera.position.z - 0.3); }
+function zoomOut() { camera.position.z = Math.min(12, camera.position.z + 0.3); }
+function circle()  { object.rotation.y += 0.5; }
+function goHome()  { window.qt.webChannelTransport.send('go_home'); }
+
+window.onresize = () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+};
+
+init();
+</script>
+</body>
+</html>

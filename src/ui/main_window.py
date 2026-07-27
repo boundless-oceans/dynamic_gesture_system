@@ -11,6 +11,7 @@ from src.core.gesture_mapper import CONTROL_GESTURES, index_to_control
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
+from src.ui.viewer_page import ViewerPage
 from src import config
 
 
@@ -60,7 +61,7 @@ class MainWindow(QMainWindow):
         self.pages = {
             "home":     HomePage(),                              # index 0
             "detail":   DetailPage(),                          # index 1
-            "viewer":   _PlaceholderPage("3D 查看", "#27ae60"),   # index 2
+            "viewer":   ViewerPage(),                           # index 2
             "settings": _PlaceholderPage("设置页", "#8e44ad"),    # index 3
         }
         self.page_index = {"home": 0, "detail": 1, "viewer": 2, "settings": 3}
@@ -84,7 +85,7 @@ class MainWindow(QMainWindow):
 
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
-            if name == "home":
+            if name in ("home", "detail", "viewer"):
                 continue
             p.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
             p.btn_detail.clicked.connect(lambda: self.stack.setCurrentIndex(1))
@@ -115,6 +116,14 @@ class MainWindow(QMainWindow):
                 home._prev()
             elif action == "swipe_right":
                 home._next()
+        elif current == 2:
+            viewer = self.pages["viewer"]
+            if action == "zoom_in":
+                viewer.zoom_in()
+            elif action == "zoom_out":
+                viewer.zoom_out()
+            elif action == "circle":
+                viewer.circle()
 
     def start(self):
         """启动摄像头和推理"""
