@@ -5,6 +5,7 @@ import torch
 import torchvision.transforms as T
 from PIL import Image
 import numpy as np
+from PySide6.QtCore import QThread, Signal
 
 from src.model.models import TSN
 from src.model.transforms import GroupScale, GroupCenterCrop, Stack, ToTorchFormatTensor, GroupNormalize
@@ -95,3 +96,28 @@ class GestureRecognizer:
             ]
         }
         return results
+
+
+class InferenceThread(QThread):
+    """推理线程：定时从帧缓冲取帧，送入模型推理"""
+
+    result_ready = Signal(dict)  # {"gesture": str, "confidence": float, "top3": list}
+
+    def __init__(self, frame_buffer, recognizer: GestureRecognizer):
+        super().__init__()
+        self.frame_buffer = frame_buffer
+        self.recognizer = recognizer
+        self._running = False
+
+    def run(self):
+        self._running = True
+        while self._running:
+            frames = self.frame_buffer.get_latest(config.NUM_SEGMENTS)
+            if len(frames) == config.NUM_SEGMENTS:
+                result = self.recognizer.predict(frames)
+                self.result_ready.emit(result)
+            self.msleep(config.INFERENCE_INTERVAL_MS)
+
+    def stop(self):
+        self._running = False
+        self.wait()

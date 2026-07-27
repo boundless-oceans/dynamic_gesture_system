@@ -14,7 +14,7 @@
 | F2b | 模型加载与推理 | DSTE-Net 模型构建、权重加载、predict() 接口 | 已完成 |
 | F2a | 帧缓冲队列 | 线程安全环形队列，保持最近 N 帧，支持取 8 帧 | 已完成 |
 | F1 | 摄像头预览 | OpenCV 采集 -> QThread -> 画面显示 | 已完成 |
-| F2 | 推理线程 | 从帧缓冲取 8 帧 -> 预处理 -> 推理 -> emit 结果信号 | 待实现 |
+| F2 | 推理线程 | 从帧缓冲取 8 帧 -> 预处理 -> 推理 -> emit 结果信号 | 已完成 |
 | F7 | 手势映射 | 83 类 DSTE-Net 输出 -> 9 种控制手势 | 待实现 |
 | F4 | 主窗口 | 4 页框架 + 页面切换 + 摄像头悬浮窗 + 信号槽 | 待实现 |
 | F0 | 应用入口 | main.py，启动 QApplication | 待实现 |
@@ -132,3 +132,14 @@ F2b -> F2a -> F1 -> F2 -> F7 -> F4 -> F0  (核心链路)
 | start(frame_buffer) | 外部 | 启动 CameraThread + 30ms 定时器 |
 | stop() | 外部 | 停止采集和显示 |
 | _update_frame() | QTimer | 从 CameraThread 取帧 -> QPixmap -> QLabel |
+
+### F2: 推理线程
+
+文件: src/core/inference.py（追加）
+类: InferenceThread(QThread)
+
+| 方法/信号 | 调用方 | 描述 |
+|------|------|------|
+| run() | 自动 | 每 200ms 从 FrameBuffer 取 8 帧 -> GestureRecognizer.predict() -> emit result_ready |
+| stop() | UI | 停止推理循环 |
+| result_ready (Signal) | UI | 发射推理结果 dict: {"gesture", "confidence", "top3"} |
