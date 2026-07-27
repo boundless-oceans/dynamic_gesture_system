@@ -67,6 +67,8 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(p)
 
         central = QWidget()
+        central.setStyleSheet("background: transparent;")
+        self.stack.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.stack)

@@ -14,7 +14,8 @@ ITEMS = ["葫芦雕刻", "刘铭传故事", "包公故事", "庐剧", "火笔画
 class _ItemCard(QFrame):
     """单个非遗项目卡片"""
 
-    clicked = Signal(int)
+    clicked = Signal(int)       # 单击 → 选中
+    double_clicked = Signal(int)  # 双击 → 进入
 
     def __init__(self, index: int, name: str):
         super().__init__()
@@ -56,7 +57,13 @@ class _ItemCard(QFrame):
         self.name_label.setStyleSheet("background: transparent; border: none;")
         layout.addWidget(self.name_label)
 
-        self.mousePressEvent = lambda e: self.clicked.emit(self.index)
+    def mousePressEvent(self, event):
+        """单击 → 选中"""
+        self.clicked.emit(self.index)
+
+    def mouseDoubleClickEvent(self, event):
+        """双击 → 进入"""
+        self.double_clicked.emit(self.index)
 
     def set_selected(self, selected: bool):
         self._selected = selected
@@ -98,12 +105,14 @@ class HomePage(QWidget):
 
     def _setup_ui(self):
         # 背景渐变色
+        self.setObjectName("HomePage")
         self.setStyleSheet("""
-            HomePage {
+            QWidget#HomePage {
                 background: qlineargradient(x1:0,y1:0, x2:0,y2:1,
                     stop:0 white, stop:1 #5ba7d1);
             }
         """)
+        self.setAutoFillBackground(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -138,7 +147,8 @@ class HomePage(QWidget):
         # 6 个卡片
         for i, name in enumerate(ITEMS):
             card = _ItemCard(i, name)
-            card.clicked.connect(self._on_select)
+            card.clicked.connect(self._on_select)          # 单击 → 选中
+            card.double_clicked.connect(self._on_double)   # 双击 → 进入
             self._cards.append(card)
             carousel_layout.addWidget(card)
 
@@ -174,10 +184,15 @@ class HomePage(QWidget):
         self._current = index
         self._update_selection()
 
+    def _on_double(self, index: int):
+        """双击 → 触发进入"""
+        self._current = index
+        self._update_selection()
+        self.item_selected.emit(self._current)
+
     def _update_selection(self):
         for i, card in enumerate(self._cards):
             card.set_selected(i == self._current)
-        self.item_selected.emit(self._current)
 
     def current_item(self) -> str:
         return ITEMS[self._current]
