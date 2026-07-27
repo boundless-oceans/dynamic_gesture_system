@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPainter, QLinearGradient, QColor
 
 
 # 6 个非遗项目
@@ -14,7 +14,8 @@ ITEMS = ["葫芦雕刻", "刘铭传故事", "包公故事", "庐剧", "火笔画
 class _ItemCard(QFrame):
     """单个非遗项目卡片"""
 
-    clicked = Signal(int)
+    clicked = Signal(int)       # 单击 → 选中
+    double_clicked = Signal(int)  # 双击 → 进入
 
     def __init__(self, index: int, name: str):
         super().__init__()
@@ -56,7 +57,13 @@ class _ItemCard(QFrame):
         self.name_label.setStyleSheet("background: transparent; border: none;")
         layout.addWidget(self.name_label)
 
-        self.mousePressEvent = lambda e: self.clicked.emit(self.index)
+    def mousePressEvent(self, event):
+        """单击 → 选中"""
+        self.clicked.emit(self.index)
+
+    def mouseDoubleClickEvent(self, event):
+        """双击 → 进入"""
+        self.double_clicked.emit(self.index)
 
     def set_selected(self, selected: bool):
         self._selected = selected
@@ -88,6 +95,8 @@ class HomePage(QWidget):
 
     # 用户选中某个项目（index）
     item_selected = Signal(int)
+    # 切换摄像头
+    camera_toggle = Signal()
 
     def __init__(self):
         super().__init__()
@@ -96,14 +105,16 @@ class HomePage(QWidget):
 
         self._setup_ui()
 
+    def paintEvent(self, event):
+        """绘制白→蓝渐变背景"""
+        painter = QPainter(self)
+        gradient = QLinearGradient(0, 0, 0, self.height())
+        gradient.setColorAt(0.0, QColor(255, 255, 255))
+        gradient.setColorAt(1.0, QColor(91, 167, 209))
+        painter.fillRect(self.rect(), gradient)
+
     def _setup_ui(self):
-        # 背景渐变色
-        self.setStyleSheet("""
-            HomePage {
-                background: qlineargradient(x1:0,y1:0, x2:0,y2:1,
-                    stop:0 white, stop:1 #5ba7d1);
-            }
-        """)
+        self.setAttribute(Qt.WA_StyledBackground, False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -138,7 +149,8 @@ class HomePage(QWidget):
         # 6 个卡片
         for i, name in enumerate(ITEMS):
             card = _ItemCard(i, name)
-            card.clicked.connect(self._on_select)
+            card.clicked.connect(self._on_select)          # 单击 → 选中
+            card.double_clicked.connect(self._on_double)   # 双击 → 进入
             self._cards.append(card)
             carousel_layout.addWidget(card)
 
@@ -159,6 +171,23 @@ class HomePage(QWidget):
 
         layout.addLayout(carousel_layout, stretch=3)
 
+        # ---- 关闭摄像头按钮 ----
+        self.btn_camera = QPushButton("关闭摄像头")
+        self.btn_camera.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_camera.setFixedSize(120, 36)
+        self.btn_camera.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,255,255,0.7);
+                border: 1px solid #aaa;
+                border-radius: 6px;
+            }
+            QPushButton:hover { background: rgba(255,255,255,1); }
+        """)
+        btn_layout = QHBoxLayout()
+        btn_layout.setAlignment(Qt.AlignCenter)
+        btn_layout.addWidget(self.btn_camera)
+        layout.addLayout(btn_layout)
+
         # 初始化选中第一个
         self._cards[0].set_selected(True)
 
@@ -174,10 +203,15 @@ class HomePage(QWidget):
         self._current = index
         self._update_selection()
 
+    def _on_double(self, index: int):
+        """双击 → 触发进入"""
+        self._current = index
+        self._update_selection()
+        self.item_selected.emit(self._current)
+
     def _update_selection(self):
         for i, card in enumerate(self._cards):
             card.set_selected(i == self._current)
-        self.item_selected.emit(self._current)
 
     def current_item(self) -> str:
         return ITEMS[self._current]

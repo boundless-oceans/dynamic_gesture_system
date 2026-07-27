@@ -67,6 +67,8 @@ class MainWindow(QMainWindow):
             self.stack.addWidget(p)
 
         central = QWidget()
+        central.setStyleSheet("background: transparent;")
+        self.stack.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.stack)
@@ -74,6 +76,8 @@ class MainWindow(QMainWindow):
 
         # HomePage: 点击项目 → 进入详情
         self.pages["home"].item_selected.connect(lambda i: self.stack.setCurrentIndex(1))
+        # HomePage: 关闭/打开摄像头
+        self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
 
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
@@ -84,8 +88,9 @@ class MainWindow(QMainWindow):
             p.btn_3d.clicked.connect(lambda: self.stack.setCurrentIndex(2))
 
         # ---- 摄像头悬浮窗 ----
-        self.camera_widget = CameraWidget()
+        self.camera_widget = CameraWidget(self)
         self.camera_widget.setFixedSize(320, 240)
+        self.camera_widget.show()
 
         # ---- 推理线程 ----
         self.inference_thread = InferenceThread(self.frame_buffer, self.recognizer)
@@ -112,6 +117,18 @@ class MainWindow(QMainWindow):
         """启动摄像头和推理"""
         self.camera_widget.start(self.frame_buffer)
         self.inference_thread.start()
+
+    def _toggle_camera(self):
+        """切换摄像头开关"""
+        home = self.pages["home"]
+        if self.camera_widget._camera_thread and self.camera_widget._camera_thread._running:
+            self.camera_widget.stop()
+            self.camera_widget.hide()
+            home.btn_camera.setText("打开摄像头")
+        else:
+            self.camera_widget.show()
+            self.camera_widget.start(self.frame_buffer)
+            home.btn_camera.setText("关闭摄像头")
 
     # ============================================================
     # 推理回调
