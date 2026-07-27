@@ -83,6 +83,8 @@ class MainWindow(QMainWindow):
         self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
+        self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
+        self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
             if name in ("home", "detail", "viewer"):
