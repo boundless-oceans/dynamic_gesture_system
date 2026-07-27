@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPainter, QLinearGradient, QColor
 
 
 # 6 个非遗项目
@@ -103,16 +103,16 @@ class HomePage(QWidget):
 
         self._setup_ui()
 
+    def paintEvent(self, event):
+        """绘制白→蓝渐变背景"""
+        painter = QPainter(self)
+        gradient = QLinearGradient(0, 0, 0, self.height())
+        gradient.setColorAt(0.0, QColor(255, 255, 255))
+        gradient.setColorAt(1.0, QColor(91, 167, 209))
+        painter.fillRect(self.rect(), gradient)
+
     def _setup_ui(self):
-        # 背景渐变色
-        self.setObjectName("HomePage")
-        self.setStyleSheet("""
-            QWidget#HomePage {
-                background: qlineargradient(x1:0,y1:0, x2:0,y2:1,
-                    stop:0 white, stop:1 #5ba7d1);
-            }
-        """)
-        self.setAutoFillBackground(True)
+        self.setAttribute(Qt.WA_StyledBackground, False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
