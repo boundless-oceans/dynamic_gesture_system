@@ -95,6 +95,8 @@ class HomePage(QWidget):
 
     # 用户选中某个项目（index）
     item_selected = Signal(int)
+    # 切换摄像头
+    camera_toggle = Signal()
 
     def __init__(self):
         super().__init__()
@@ -168,6 +170,23 @@ class HomePage(QWidget):
         carousel_layout.addWidget(self.btn_right)
 
         layout.addLayout(carousel_layout, stretch=3)
+
+        # ---- 关闭摄像头按钮 ----
+        self.btn_camera = QPushButton("关闭摄像头")
+        self.btn_camera.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_camera.setFixedSize(120, 36)
+        self.btn_camera.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,255,255,0.7);
+                border: 1px solid #aaa;
+                border-radius: 6px;
+            }
+            QPushButton:hover { background: rgba(255,255,255,1); }
+        """)
+        btn_layout = QHBoxLayout()
+        btn_layout.setAlignment(Qt.AlignCenter)
+        btn_layout.addWidget(self.btn_camera)
+        layout.addLayout(btn_layout)
 
         # 初始化选中第一个
         self._cards[0].set_selected(True)
