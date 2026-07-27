@@ -9,6 +9,7 @@ from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer, InferenceThread
 from src.core.gesture_mapper import CONTROL_GESTURES, index_to_control
 from src.ui.camera_widget import CameraWidget
+from src.ui.home_page import HomePage
 from src import config
 
 
@@ -56,7 +57,7 @@ class MainWindow(QMainWindow):
         # ---- 4 页框架 ----
         self.stack = QStackedWidget()
         self.pages = {
-            "home":     _PlaceholderPage("首页", "#2c3e50"),     # index 0
+            "home":     HomePage(),                              # index 0
             "detail":   _PlaceholderPage("详情页", "#2980b9"),    # index 1
             "viewer":   _PlaceholderPage("3D 查看", "#27ae60"),   # index 2
             "settings": _PlaceholderPage("设置页", "#8e44ad"),    # index 3
@@ -71,8 +72,13 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack)
         self.setCentralWidget(central)
 
-        # 鼠标兜底：占位页的按钮绑定
-        for p in self.pages.values():
+        # HomePage: 点击项目 → 进入详情
+        self.pages["home"].item_selected.connect(lambda i: self.stack.setCurrentIndex(1))
+
+        # ---- 占位页按钮绑定（跳过 HomePage） ----
+        for name, p in self.pages.items():
+            if name == "home":
+                continue
             p.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
             p.btn_detail.clicked.connect(lambda: self.stack.setCurrentIndex(1))
             p.btn_3d.clicked.connect(lambda: self.stack.setCurrentIndex(2))
@@ -85,9 +91,22 @@ class MainWindow(QMainWindow):
         self.inference_thread = InferenceThread(self.frame_buffer, self.recognizer)
         self.inference_thread.result_ready.connect(self._on_result)
 
+        # ---- 手势 → HomePage 轮播 ----
+        self.signal_gesture_action.connect(self._on_gesture_action)
+
         # ---- 去抖 ----
         self._last_gesture = None
         self._gesture_count = 0
+
+    def _on_gesture_action(self, action: str):
+        """手势操作分发到当前页面"""
+        current = self.stack.currentIndex()
+        home = self.pages["home"]
+        if current == 0:  # 首页
+            if action == "swipe_left":
+                home._prev()
+            elif action == "swipe_right":
+                home._next()
 
     def start(self):
         """启动摄像头和推理"""
