@@ -15,7 +15,7 @@
 | F2a | 帧缓冲队列 | 线程安全环形队列，保持最近 N 帧，支持取 8 帧 | 已完成 |
 | F1 | 摄像头预览 | OpenCV 采集 -> QThread -> 画面显示 | 已完成 |
 | F2 | 推理线程 | 从帧缓冲取 8 帧 -> 预处理 -> 推理 -> emit 结果信号 | 已完成 |
-| F7 | 手势映射 | 83 类 DSTE-Net 输出 -> 9 种控制手势 | 待实现 |
+| F7 | 手势映射 | 83 类 DSTE-Net 输出 -> 9 种控制手势 | 已完成 |
 | F4 | 主窗口 | 4 页框架 + 页面切换 + 摄像头悬浮窗 + 信号槽 | 待实现 |
 | F0 | 应用入口 | main.py，启动 QApplication | 待实现 |
 
@@ -143,3 +143,14 @@ F2b -> F2a -> F1 -> F2 -> F7 -> F4 -> F0  (核心链路)
 | run() | 自动 | 每 200ms 从 FrameBuffer 取 8 帧 -> GestureRecognizer.predict() -> emit result_ready |
 | stop() | UI | 停止推理循环 |
 | result_ready (Signal) | UI | 发射推理结果 dict: {"gesture", "confidence", "top3"} |
+
+### F7: 手势映射
+
+文件: src/core/gesture_mapper.py
+
+| 元素 | 描述 |
+|------|------|
+| EGO_TO_CONTROL | 字典：原始标签 -> 控制手势（10条映射，含大小写不敏感） |
+| CONTROL_GESTURES | 集合：9 种控制手势名 |
+| map_gesture(label) | 原始标签 -> 控制手势，未映射返回 None |
+| index_to_control(idx) | 索引 -> 控制手势，需标签表配合 |
