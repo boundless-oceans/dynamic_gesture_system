@@ -10,6 +10,7 @@ from src.core.inference import GestureRecognizer, InferenceThread
 from src.core.gesture_mapper import CONTROL_GESTURES, index_to_control
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
+from src.ui.detail_page import DetailPage
 from src import config
 
 
@@ -58,7 +59,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.pages = {
             "home":     HomePage(),                              # index 0
-            "detail":   _PlaceholderPage("详情页", "#2980b9"),    # index 1
+            "detail":   DetailPage(),                          # index 1
             "viewer":   _PlaceholderPage("3D 查看", "#27ae60"),   # index 2
             "settings": _PlaceholderPage("设置页", "#8e44ad"),    # index 3
         }
@@ -78,6 +79,8 @@ class MainWindow(QMainWindow):
         self.pages["home"].item_selected.connect(lambda i: self.stack.setCurrentIndex(1))
         # HomePage: 关闭/打开摄像头
         self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
+        self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
+        self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
