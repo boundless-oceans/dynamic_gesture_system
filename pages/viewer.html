@@ -6,14 +6,19 @@
 <style>
     body { margin: 0; overflow: hidden; background: radial-gradient(#e0f2f7, #5ba7d1); }
     #container { width: 100vw; height: 100vh; }
-
+    #loading {
+        position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        color: white; font-size: 24px; font-family: "Microsoft YaHei",sans-serif;
+        z-index: 1000;
+    }
 </style>
 </head>
 <body>
 <div id="container"></div>
+<div id="loading">加载中...</div>
 
 
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.bootcdn.net/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 let scene, camera, renderer, object;
 
@@ -36,6 +41,7 @@ function init() {
     object = new THREE.Mesh(geo, mat);
     scene.add(object);
 
+    document.getElementById('loading').style.display = 'none';
     animate();
 }
 
