@@ -16,14 +16,14 @@
 | F1 | 摄像头预览 | OpenCV 采集 -> QThread -> 画面显示 | 已完成 |
 | F2 | 推理线程 | 从帧缓冲取 8 帧 -> 预处理 -> 推理 -> emit 结果信号 | 已完成 |
 | F7 | 手势映射 | 83 类 DSTE-Net 输出 -> 9 种控制手势 | 已完成 |
-| F4 | 主窗口 | 4 页框架 + 页面切换 + 摄像头悬浮窗 + 信号槽 | 待实现 |
-| F0 | 应用入口 | main.py，启动 QApplication | 待实现 |
+| F4 | 主窗口 | 4 页框架 + 页面切换 + 摄像头悬浮窗 + 信号槽 | 已完成 |
+| F0 | 应用入口 | main.py，启动 QApplication | 已完成 |
 
 ### P1（页面内容）
 
 | 编号 | 功能 | 描述 | 状态 |
 |------|------|------|:--:|
-| F8 | 首页 | 非遗项目轮播展示，左右滑动切换 | 待实现 |
+| F8 | 首页 | 非遗项目轮播展示，左右滑动切换 | 已完成 |
 | F9 | 详情页 | 图文介绍，上下滚动 | 待实现 |
 | F10 | 3D 查看 | Three.js 3D 模型交互（旋转、缩放） | 待实现 |
 | F5 | 去抖 | 连续 N 次识别结果一致才触发操作 | 待实现 |
@@ -154,3 +154,18 @@ F2b -> F2a -> F1 -> F2 -> F7 -> F4 -> F0  (核心链路)
 | CONTROL_GESTURES | 集合：9 种控制手势名 |
 | map_gesture(label) | 原始标签 -> 控制手势，未映射返回 None |
 | index_to_control(idx) | 索引 -> 控制手势，需标签表配合 |
+
+### F4: 主窗口
+
+文件: src/ui/main_window.py
+类: MainWindow(QMainWindow)
+
+| 方法/属性 | 描述 |
+|------|------|
+| stack | QStackedWidget，4 页占位（首页/详情/3D/设置） |
+| camera_widget | CameraWidget，右上角悬浮，320x240 |
+| signal_gesture_action | Signal(str)，发射给页面接收的手势操作 |
+| start() | 启动摄像头 + 推理线程 |
+| _on_result(result) | 推理回调：索引 -> 控制手势 -> 路由 |
+| _on_control_gesture(gesture) | 手势路由：根据当前页面分发操作，含去抖 |
+| _position_camera() | resizeEvent 中重新定位悬浮窗 |

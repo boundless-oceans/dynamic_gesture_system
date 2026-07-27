@@ -16,11 +16,10 @@ class CameraWidget(QWidget):
         self._camera_thread = None
         self._timer = QTimer(self)
 
-        # 显示画面
         self._label = QLabel("摄像头未开启")
         self._label.setAlignment(Qt.AlignCenter)
         self._label.setMinimumSize(320, 240)
-        self._label.setStyleSheet("background-color: #1e1e1e; color: #888;")
+        self._label.setStyleSheet("background-color: #1e1e1e; color: #888; font-size: 14px;")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -29,30 +28,29 @@ class CameraWidget(QWidget):
         self._timer.timeout.connect(self._update_frame)
 
     def start(self, frame_buffer: FrameBuffer):
-        """启动摄像头"""
         if self._camera_thread is not None:
             return
-
         self._camera_thread = CameraThread(frame_buffer)
         self._camera_thread.frame_ready.connect(self._on_frame_ready)
         self._camera_thread.start()
-        self._timer.start(33)  # ~30fps
+        self._timer.start(33)
 
     def stop(self):
-        """停止摄像头"""
         if self._camera_thread is None:
             return
         self._timer.stop()
         self._camera_thread.stop()
         self._camera_thread = None
+        self._label.clear()
+        self._label.setFixedSize(320, 240)
+        self._label.setStyleSheet("background-color: #1e1e1e; color: #888; font-size: 14px;")
         self._label.setText("摄像头未开启")
-        self._label.setStyleSheet("background-color: #1e1e1e; color: #888;")
+        self.update()
 
     def _on_frame_ready(self):
-        """收到新帧信号，等待定时器刷新"""
+        pass
 
     def _update_frame(self):
-        """定时器触发，从 CameraThread 取最新帧显示"""
         if self._camera_thread is None:
             return
         frame = self._camera_thread.get_frame()
