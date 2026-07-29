@@ -77,14 +77,14 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # HomePage: 点击项目 → 进入详情
-        self.pages["home"].item_selected.connect(lambda i: self.stack.setCurrentIndex(1))
+        self.pages["home"].item_selected.connect(lambda i: self._go_detail())
         # HomePage: 关闭/打开摄像头
         self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
         self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
-        self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
+        self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
             if name in ("home", "detail", "viewer"):
@@ -131,6 +131,10 @@ class MainWindow(QMainWindow):
         """启动摄像头和推理"""
         self.camera_widget.start(self.frame_buffer)
         self.inference_thread.start()
+
+    def _go_detail(self):
+        self.pages["detail"].reset_to_main()
+        self.stack.setCurrentIndex(1)
 
     def _toggle_camera(self):
         """切换摄像头开关"""
@@ -180,7 +184,7 @@ class MainWindow(QMainWindow):
         # 首页操作
         if current_name == "home":
             if gesture == "click":
-                self.stack.setCurrentIndex(1)  # 进入详情
+                self._go_detail()
             elif gesture == "swipe_left":
                 self.signal_gesture_action.emit("swipe_left")
             elif gesture == "swipe_right":

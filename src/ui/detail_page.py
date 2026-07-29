@@ -14,6 +14,10 @@ class DetailPage(QWidget):
     go_home = Signal()
     go_viewer = Signal()
 
+    def reset_to_main(self):
+        """回到主视图（从其他子视图返回时调用）"""
+        self.stack.setCurrentIndex(0)
+
     def __init__(self):
         super().__init__()
         self._setup_ui()
