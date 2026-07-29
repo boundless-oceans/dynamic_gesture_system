@@ -15,6 +15,9 @@ from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
 from src.ui.settings_page import SettingsPage
 from src import config
+from src.logger import get_logger
+
+log = get_logger()
 
 
 class _PlaceholderPage(QWidget):
@@ -184,6 +187,7 @@ class MainWindow(QMainWindow):
     # ============================================================
     def _on_control_gesture(self, gesture: str):
         # 去抖：连续 CONSISTENCY_COUNT 次相同才触发
+            
         if gesture == self._last_gesture:
             self._gesture_count += 1
         else:
