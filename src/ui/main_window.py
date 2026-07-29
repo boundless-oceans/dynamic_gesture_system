@@ -122,6 +122,7 @@ class MainWindow(QMainWindow):
         # ---- 手势 → HomePage 轮播 ----
         self.signal_gesture_action.connect(self._on_gesture_action)
 
+
         # ---- 去抖 ----
         self._last_gesture = None
         self._gesture_count = 0
@@ -159,8 +160,10 @@ class MainWindow(QMainWindow):
         if self.camera_widget._camera_thread and self.camera_widget._camera_thread._running:
             self.camera_widget.stop()
             self.camera_widget.hide()
+            
             self.btn_camera_global.setText("打开摄像头")
         else:
+            
             self.camera_widget.show()
             self.camera_widget.start(self.frame_buffer)
             self.btn_camera_global.setText("关闭摄像头")
@@ -170,6 +173,8 @@ class MainWindow(QMainWindow):
     # ============================================================
     def _on_result(self, result: dict):
         gesture_idx = int(result["gesture"])
+        confidence = result.get("confidence", 0)
+        self.camera_widget.set_confidence(str(gesture_idx), confidence)
         control = index_to_control(gesture_idx)
         if control:
             self._on_control_gesture(control)
@@ -235,6 +240,7 @@ class MainWindow(QMainWindow):
         self.btn_camera_global.raise_()
         self.btn_settings_global.move(self.width() // 2 + 10, self.height() - 52)
         self.btn_settings_global.raise_()
+
 
     # ============================================================
     # 生命周期
