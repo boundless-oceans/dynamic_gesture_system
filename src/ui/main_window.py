@@ -12,6 +12,7 @@ from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
+from src.ui.settings_page import SettingsPage
 from src import config
 
 
@@ -62,7 +63,7 @@ class MainWindow(QMainWindow):
             "home":     HomePage(),                              # index 0
             "detail":   DetailPage(),                          # index 1
             "viewer":   ViewerPage(),                           # index 2
-            "settings": _PlaceholderPage("设置页", "#8e44ad"),    # index 3
+            "settings": SettingsPage(),                        # index 3
         }
         self.page_index = {"home": 0, "detail": 1, "viewer": 2, "settings": 3}
         for p in self.pages.values():
@@ -80,6 +81,7 @@ class MainWindow(QMainWindow):
         self.pages["home"].item_selected.connect(lambda i: self._go_detail())
         # HomePage: 关闭/打开摄像头
         self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
+        self.pages["home"].btn_settings.clicked.connect(lambda: self.stack.setCurrentIndex(3))
         self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
@@ -87,7 +89,7 @@ class MainWindow(QMainWindow):
         self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
-            if name in ("home", "detail", "viewer"):
+            if name in ("home", "detail", "viewer", "settings"):
                 continue
             p.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
             p.btn_detail.clicked.connect(lambda: self.stack.setCurrentIndex(1))

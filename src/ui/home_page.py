@@ -186,6 +186,17 @@ class HomePage(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setAlignment(Qt.AlignCenter)
         btn_layout.addWidget(self.btn_camera)
+        self.btn_settings = QPushButton("手势说明")
+        self.btn_settings.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_settings.setFixedSize(100, 36)
+        self.btn_settings.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,255,255,0.7);
+                border: 1px solid #aaa; border-radius: 6px;
+            }
+            QPushButton:hover { background: rgba(255,255,255,1); }
+        """)
+        btn_layout.addWidget(self.btn_settings)
         layout.addLayout(btn_layout)
 
         # 初始化选中第一个
