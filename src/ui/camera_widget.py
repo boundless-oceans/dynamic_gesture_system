@@ -1,11 +1,26 @@
 """摄像头预览组件"""
 
+import json
+import os
+
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PySide6.QtGui import QImage, QPixmap, QFont
 from PySide6.QtCore import Qt, QTimer
 
 from src.core.camera import CameraThread
 from src.core.frame_buffer import FrameBuffer
+
+
+def _load_labels():
+    path = os.path.join(os.path.dirname(__file__), "../../assets/gestures.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+_LABELS = _load_labels()
 
 
 class CameraWidget(QWidget):
@@ -61,8 +76,9 @@ class CameraWidget(QWidget):
         self.update()
 
     def set_confidence(self, gesture: str, confidence: float):
-        self._gesture_text.setText(f"Gesture: {gesture}")
-        self._conf_text.setText(f"Conf: {confidence*100:.1f}%")
+        label = _LABELS.get(gesture, f"ID:{gesture}")
+        self._gesture_text.setText(f"{label}")
+        self._conf_text.setText(f"{confidence*100:.1f}%")
         self._gesture_text.raise_()
         self._conf_text.raise_()
 
