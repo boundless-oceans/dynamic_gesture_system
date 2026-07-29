@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QLabel, QPushButton
 )
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer, InferenceThread
@@ -80,8 +81,8 @@ class MainWindow(QMainWindow):
         # HomePage: 点击项目 → 进入详情
         self.pages["home"].item_selected.connect(lambda i: self._go_detail())
         # HomePage: 关闭/打开摄像头
-        self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
-        self.pages["home"].btn_settings.clicked.connect(lambda: self.stack.setCurrentIndex(3))
+        
+        self.pages["settings"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
@@ -102,6 +103,20 @@ class MainWindow(QMainWindow):
 
         # ---- 推理线程 ----
         self.inference_thread = InferenceThread(self.frame_buffer, self.recognizer)
+        self.btn_camera_global = QPushButton("关闭摄像头", self)
+        self.btn_camera_global.setFixedSize(120, 36)
+        self.btn_camera_global.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_camera_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        self.btn_camera_global.clicked.connect(self._toggle_camera)
+        self.btn_camera_global.show()
+        self.btn_camera_global.show()
+
+        self.btn_settings_global = QPushButton("手势说明", self)
+        self.btn_settings_global.setFixedSize(100, 36)
+        self.btn_settings_global.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_settings_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        self.btn_settings_global.clicked.connect(lambda: self.stack.setCurrentIndex(3))
+        self.btn_settings_global.show()
         self.inference_thread.result_ready.connect(self._on_result)
 
         # ---- 手势 → HomePage 轮播 ----
@@ -144,11 +159,11 @@ class MainWindow(QMainWindow):
         if self.camera_widget._camera_thread and self.camera_widget._camera_thread._running:
             self.camera_widget.stop()
             self.camera_widget.hide()
-            home.btn_camera.setText("打开摄像头")
+            self.btn_camera_global.setText("打开摄像头")
         else:
             self.camera_widget.show()
             self.camera_widget.start(self.frame_buffer)
-            home.btn_camera.setText("关闭摄像头")
+            self.btn_camera_global.setText("关闭摄像头")
 
     # ============================================================
     # 推理回调
@@ -216,6 +231,10 @@ class MainWindow(QMainWindow):
         h = self.camera_widget.height()
         self.camera_widget.setGeometry(self.width() - w - 20, 20, w, h)
         self.camera_widget.raise_()
+        self.btn_camera_global.move(self.width() // 2 - 130, self.height() - 52)
+        self.btn_camera_global.raise_()
+        self.btn_settings_global.move(self.width() // 2 + 10, self.height() - 52)
+        self.btn_settings_global.raise_()
 
     # ============================================================
     # 生命周期

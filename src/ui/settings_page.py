@@ -1,14 +1,17 @@
 """设置页：手势对照表"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QHeaderView
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTableWidget, QTableWidgetItem, QHeaderView
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPainter, QLinearGradient, QColor
 
 
 class SettingsPage(QWidget):
     """手势操作说明"""
+
+    go_home = Signal()
 
     def __init__(self):
         super().__init__()
@@ -73,6 +76,18 @@ class SettingsPage(QWidget):
             }
         """)
         layout.addWidget(table)
+
+        nav = QHBoxLayout()
+        nav.setAlignment(Qt.AlignCenter)
+        btn_home = QPushButton("返回首页")
+        btn_home.setFixedSize(140, 44)
+        btn_home.setFont(QFont("Microsoft YaHei", 13))
+        btn_home.setStyleSheet("QPushButton { background: rgba(255,255,255,0.8); border: 1px solid #aaa; border-radius: 8px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        btn_home.clicked.connect(self.go_home.emit)
+        nav.addWidget(btn_home)
+        layout.addLayout(nav)
+
+        layout.addSpacing(10)
 
         tip = QLabel("提示：鼠标点击按钮作为兜底操作，摄像头关闭时仍可正常使用")
         tip.setAlignment(Qt.AlignCenter)
