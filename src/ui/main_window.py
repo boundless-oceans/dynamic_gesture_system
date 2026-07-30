@@ -82,7 +82,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # HomePage: 点击项目 → 进入详情
-        self.pages["home"].item_selected.connect(lambda i: self._go_detail())
+        self.pages["home"].item_selected.connect(self._go_detail)
         # HomePage: 关闭/打开摄像头
         
         self.pages["settings"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
@@ -157,6 +157,10 @@ class MainWindow(QMainWindow):
         self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(1)
 
+    def _go_detail(self, index: int = 2):
+        self.pages["detail"].set_project(index)
+        self.pages["detail"].reset_to_main()
+        self.stack.setCurrentIndex(1)
     def _toggle_camera(self):
         """切换摄像头开关"""
         home = self.pages["home"]
