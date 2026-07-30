@@ -29,7 +29,7 @@ class ViewerPage(QWidget):
         self.btn_back.setStyleSheet("""
             QPushButton {
                 background: white; border: none; border-radius: 30px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                
             }
             QPushButton:hover { background: #f0f0f0; }
         """)

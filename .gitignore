@@ -4,5 +4,6 @@ weights/
 *.pth
 *.pth.tar
 .env
+logs/
 .venv/
 venv/

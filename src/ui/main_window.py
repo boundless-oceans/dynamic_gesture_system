@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QStackedWidget, QLabel, QPushButton
 )
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer, InferenceThread
@@ -12,7 +13,11 @@ from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
+from src.ui.settings_page import SettingsPage
 from src import config
+from src.logger import get_logger
+
+log = get_logger()
 
 
 class _PlaceholderPage(QWidget):
@@ -62,7 +67,7 @@ class MainWindow(QMainWindow):
             "home":     HomePage(),                              # index 0
             "detail":   DetailPage(),                          # index 1
             "viewer":   ViewerPage(),                           # index 2
-            "settings": _PlaceholderPage("设置页", "#8e44ad"),    # index 3
+            "settings": SettingsPage(),                        # index 3
         }
         self.page_index = {"home": 0, "detail": 1, "viewer": 2, "settings": 3}
         for p in self.pages.values():
@@ -77,9 +82,10 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # HomePage: 点击项目 → 进入详情
-        self.pages["home"].item_selected.connect(lambda i: self._go_detail())
+        self.pages["home"].item_selected.connect(self._go_detail)
         # HomePage: 关闭/打开摄像头
-        self.pages["home"].btn_camera.clicked.connect(self._toggle_camera)
+        
+        self.pages["settings"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
@@ -87,7 +93,7 @@ class MainWindow(QMainWindow):
         self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
-            if name in ("home", "detail", "viewer"):
+            if name in ("home", "detail", "viewer", "settings"):
                 continue
             p.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
             p.btn_detail.clicked.connect(lambda: self.stack.setCurrentIndex(1))
@@ -100,10 +106,25 @@ class MainWindow(QMainWindow):
 
         # ---- 推理线程 ----
         self.inference_thread = InferenceThread(self.frame_buffer, self.recognizer)
+        self.btn_camera_global = QPushButton("关闭摄像头", self)
+        self.btn_camera_global.setFixedSize(90, 28)
+        self.btn_camera_global.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_camera_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        self.btn_camera_global.clicked.connect(self._toggle_camera)
+        self.btn_camera_global.show()
+        self.btn_camera_global.show()
+
+        self.btn_settings_global = QPushButton("手势说明", self)
+        self.btn_settings_global.setFixedSize(80, 28)
+        self.btn_settings_global.setFont(QFont("Microsoft YaHei", 10))
+        self.btn_settings_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        self.btn_settings_global.clicked.connect(lambda: self.stack.setCurrentIndex(3))
+        self.btn_settings_global.show()
         self.inference_thread.result_ready.connect(self._on_result)
 
         # ---- 手势 → HomePage 轮播 ----
         self.signal_gesture_action.connect(self._on_gesture_action)
+
 
         # ---- 去抖 ----
         self._last_gesture = None
@@ -136,23 +157,31 @@ class MainWindow(QMainWindow):
         self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(1)
 
+    def _go_detail(self, index: int = 2):
+        self.pages["detail"].set_project(index)
+        self.pages["detail"].reset_to_main()
+        self.stack.setCurrentIndex(1)
     def _toggle_camera(self):
         """切换摄像头开关"""
         home = self.pages["home"]
         if self.camera_widget._camera_thread and self.camera_widget._camera_thread._running:
             self.camera_widget.stop()
             self.camera_widget.hide()
-            home.btn_camera.setText("打开摄像头")
+            
+            self.btn_camera_global.setText("打开摄像头")
         else:
+            
             self.camera_widget.show()
             self.camera_widget.start(self.frame_buffer)
-            home.btn_camera.setText("关闭摄像头")
+            self.btn_camera_global.setText("关闭摄像头")
 
     # ============================================================
     # 推理回调
     # ============================================================
     def _on_result(self, result: dict):
         gesture_idx = int(result["gesture"])
+        confidence = result.get("confidence", 0)
+        self.camera_widget.set_confidence(str(gesture_idx), confidence)
         control = index_to_control(gesture_idx)
         if control:
             self._on_control_gesture(control)
@@ -162,6 +191,7 @@ class MainWindow(QMainWindow):
     # ============================================================
     def _on_control_gesture(self, gesture: str):
         # 去抖：连续 CONSISTENCY_COUNT 次相同才触发
+            
         if gesture == self._last_gesture:
             self._gesture_count += 1
         else:
@@ -214,6 +244,11 @@ class MainWindow(QMainWindow):
         h = self.camera_widget.height()
         self.camera_widget.setGeometry(self.width() - w - 20, 20, w, h)
         self.camera_widget.raise_()
+        self.btn_camera_global.move(self.width() // 2 - 100, self.height() - 30)
+        self.btn_camera_global.raise_()
+        self.btn_settings_global.move(self.width() // 2 + 2, self.height() - 30)
+        self.btn_settings_global.raise_()
+
 
     # ============================================================
     # 生命周期
