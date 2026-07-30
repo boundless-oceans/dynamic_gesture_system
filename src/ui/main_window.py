@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         # ---- 推理线程 ----
         self.inference_thread = InferenceThread(self.frame_buffer, self.recognizer)
         self.btn_camera_global = QPushButton("关闭摄像头", self)
-        self.btn_camera_global.setFixedSize(120, 36)
+        self.btn_camera_global.setFixedSize(90, 28)
         self.btn_camera_global.setFont(QFont("Microsoft YaHei", 10))
         self.btn_camera_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
         self.btn_camera_global.clicked.connect(self._toggle_camera)
@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         self.btn_camera_global.show()
 
         self.btn_settings_global = QPushButton("手势说明", self)
-        self.btn_settings_global.setFixedSize(100, 36)
+        self.btn_settings_global.setFixedSize(80, 28)
         self.btn_settings_global.setFont(QFont("Microsoft YaHei", 10))
         self.btn_settings_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
         self.btn_settings_global.clicked.connect(lambda: self.stack.setCurrentIndex(3))
@@ -240,9 +240,9 @@ class MainWindow(QMainWindow):
         h = self.camera_widget.height()
         self.camera_widget.setGeometry(self.width() - w - 20, 20, w, h)
         self.camera_widget.raise_()
-        self.btn_camera_global.move(self.width() // 2 - 130, self.height() - 52)
+        self.btn_camera_global.move(self.width() // 2 - 100, self.height() - 30)
         self.btn_camera_global.raise_()
-        self.btn_settings_global.move(self.width() // 2 + 10, self.height() - 52)
+        self.btn_settings_global.move(self.width() // 2 + 2, self.height() - 30)
         self.btn_settings_global.raise_()
 
 
