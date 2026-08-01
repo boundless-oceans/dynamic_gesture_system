@@ -8,9 +8,7 @@ from src import config
 
 
 class CameraThread(QThread):
-    """摄像头采集线程：持续读取帧，存入共享缓冲"""
-
-    frame_ready = Signal()   # 通知 UI 有新帧可读
+    frame_ready = Signal()
 
     def __init__(self, frame_buffer):
         super().__init__()
@@ -36,24 +34,26 @@ class CameraThread(QThread):
             # 镜像翻转
             frame = cv2.flip(frame, 1)
 
-            # 存入共享区（供 UI 读取）
+            # 图像增强：CLAHE + 去噪
+            lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
+            l, a, b = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l = clahe.apply(l)
+            lab = cv2.merge([l, a, b])
+            frame = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+            frame = cv2.GaussianBlur(frame, (3, 3), 0)
+
             self._mutex.lock()
             self._current_frame = frame
             self._mutex.unlock()
 
-            # 推入帧缓冲（供推理线程）
             self.frame_buffer.push(frame)
-
-            # 通知 UI
             self.frame_ready.emit()
-
-            # 控制帧率
             self.msleep(1000 // config.CAMERA_FPS)
 
         self.cap.release()
 
     def get_frame(self) -> np.ndarray | None:
-        """主线程安全读取当前帧"""
         self._mutex.lock()
         frame = self._current_frame.copy() if self._current_frame is not None else None
         self._mutex.unlock()
