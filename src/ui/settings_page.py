@@ -67,7 +67,7 @@ class SettingsPage(QWidget):
 
         table.setStyleSheet("""
             QTableWidget {
-                background: rgba(255,255,255,0.85);
+                background: rgba(255,255,255,0.5);
                 border-radius: 10px; gridline-color: #ddd;
             }
             QHeaderView::section {

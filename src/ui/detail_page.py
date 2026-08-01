@@ -165,7 +165,7 @@ class DetailPage(QWidget):
 
     def _intro_section(self):
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.85); border-radius: 10px; padding: 12px; }")
+        frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 16px; padding: 14px; }")
         layout = QVBoxLayout(frame)
         layout.setSpacing(10)
         for t, b in self.project["sections"]:
@@ -183,7 +183,7 @@ class DetailPage(QWidget):
 
     def _video_section(self):
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.85); border-radius: 10px; }")
+        frame.setStyleSheet("QFrame { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 16px; }")
         layout = QVBoxLayout(frame)
         label = QLabel("视频播放区")
         label.setAlignment(Qt.AlignCenter)

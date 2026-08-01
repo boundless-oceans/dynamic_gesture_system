@@ -1,13 +1,13 @@
 """首页：非遗项目轮播展示"""
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QPainter, QLinearGradient, QColor
 
 
 ITEMS = ["葫芦雕刻", "刘铭传故事", "包公故事", "庐剧", "火笔画", "吴山铁字"]
+
+_FROSTED = "QFrame { background: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.7); border-radius: 16px; } QFrame:hover { background: rgba(255,255,255,0.75); border: 2px solid #ff9900; }"
 
 
 class _ItemCard(QFrame):
@@ -19,7 +19,7 @@ class _ItemCard(QFrame):
         self.index = index
         self.setFixedSize(160, 280)
         self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet("QFrame { background: rgba(255,255,255,0.9); border: 2px solid #ccc; border-radius: 12px; } QFrame:hover { border: 2px solid #ff9900; }")
+        self.setStyleSheet(_FROSTED)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -27,7 +27,7 @@ class _ItemCard(QFrame):
         img = QLabel()
         img.setAlignment(Qt.AlignCenter)
         img.setFixedHeight(200)
-        img.setStyleSheet("background: #e8e8e8; border-radius: 8px;")
+        img.setStyleSheet("background: rgba(255,255,255,0.3); border-radius: 10px;")
         layout.addWidget(img)
         name_label = QLabel(name)
         name_label.setAlignment(Qt.AlignCenter)
@@ -44,10 +44,10 @@ class _ItemCard(QFrame):
     def set_selected(self, selected: bool):
         if selected:
             self.setFixedSize(175, 300)
-            self.setStyleSheet("QFrame { background: rgba(255,255,255,0.95); border: 3px solid #ff7700; border-radius: 14px; }")
+            self.setStyleSheet("QFrame { background: rgba(255,255,255,0.8); border: 3px solid #ff7700; border-radius: 18px; }")
         else:
             self.setFixedSize(160, 280)
-            self.setStyleSheet("QFrame { background: rgba(255,255,255,0.9); border: 2px solid #ccc; border-radius: 12px; } QFrame:hover { border: 2px solid #ff9900; }")
+            self.setStyleSheet(_FROSTED)
 
 
 class HomePage(QWidget):
@@ -84,7 +84,7 @@ class HomePage(QWidget):
         btn_left = QPushButton("<")
         btn_left.setFixedSize(50, 50)
         btn_left.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
-        btn_left.setStyleSheet("QPushButton { background: rgba(255,255,255,0.8); border: none; border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        btn_left.setStyleSheet("QPushButton { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,0.9); }")
         btn_left.clicked.connect(self._prev)
         carousel_layout.addWidget(btn_left)
 
@@ -98,7 +98,7 @@ class HomePage(QWidget):
         btn_right = QPushButton(">")
         btn_right.setFixedSize(50, 50)
         btn_right.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
-        btn_right.setStyleSheet("QPushButton { background: rgba(255,255,255,0.8); border: none; border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,1); }")
+        btn_right.setStyleSheet("QPushButton { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,0.9); }")
         btn_right.clicked.connect(self._next)
         carousel_layout.addWidget(btn_right)
 
