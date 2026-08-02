@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton
 from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
 from src.core.project_data import PROJECTS, get_sections
+from src.ui.hover_button import HoverButton
 from src.ui.base_page import BasePage
 
 P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
@@ -38,7 +39,7 @@ class DetailPage(BasePage):
         l.addWidget(ph,stretch=4)
         bl=QHBoxLayout(); bl.setAlignment(Qt.AlignCenter); bl.setSpacing(30)
         for tx,sl in [("返回主页",self.go_home.emit),("非遗详情",lambda:self.stack.setCurrentIndex(1)),("交互展示",self.go_viewer.emit)]:
-            b=QPushButton(tx); b.setFixedSize(140,50); b.setFont(QFont("Microsoft YaHei",14))
+            b=HoverButton(tx); b.setFixedSize(140,50); b.setFont(QFont("Microsoft YaHei",14))
             b.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}")
             b.clicked.connect(sl); bl.addWidget(b)
         l.addLayout(bl,stretch=1); return w
