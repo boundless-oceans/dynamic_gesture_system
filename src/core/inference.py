@@ -45,9 +45,9 @@ class GestureRecognizer:
         """加载权重，不存在则使用随机初始化"""
         if os.path.exists(config.MODEL_WEIGHTS_PATH):
             print(f"[Inference] Loading weights from {config.MODEL_WEIGHTS_PATH}")
-            checkpoint = torch.load(config.MODEL_WEIGHTS_PATH, map_location=self.device)
+            checkpoint = torch.load(config.MODEL_WEIGHTS_PATH, map_location=self.device, weights_only=False)
             if 'state_dict' in checkpoint:
-                self.model.load_state_dict(checkpoint['state_dict'], strict=False)
+                self.model.load_state_dict({k.replace('module.', ''): v for k, v in checkpoint.get('state_dict', checkpoint).items()}, strict=False)
             else:
                 self.model.load_state_dict(checkpoint, strict=False)
             print("[Inference] Weights loaded.")
