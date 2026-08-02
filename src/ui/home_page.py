@@ -7,7 +7,8 @@ from PySide6.QtWidgets import QGraphicsDropShadowEffect
 
 from src.ui.base_page import BasePage
 
-ITEMS = ["葫芦雕刻", "刘铭传故事", "包公故事", "庐剧", "火笔画", "吴山铁字"]
+from src.core.project_data import get_names as _get_names
+ITEMS = _get_names()
 _FROSTED = "QFrame { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); border-radius: 16px; } QFrame:hover { background: rgba(255,255,255,0.55); border: 2px solid #ff9900; }"
 
 

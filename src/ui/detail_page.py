@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
 from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
+from src.core.project_data import PROJECTS, get_sections
 from src.ui.base_page import BasePage
 
 P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
@@ -14,13 +15,14 @@ P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人�
 class DetailPage(BasePage):
     go_home=Signal(); go_viewer=Signal()
     def __init__(self,pi=2):
-        super().__init__(); self.pj=P[pi]
+        super().__init__(); self._pi=pi
+
         self.setAttribute(Qt.WA_StyledBackground,False)
         lo=QVBoxLayout(self); lo.setContentsMargins(20,20,20,40)
         self.stack=QStackedWidget(); self.stack.setStyleSheet("background:transparent;")
         self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
         lo.addWidget(self.stack)
-    def set_project(self,i): self.pj=P[i]; self._rb()
+    def set_project(self,i): self._pi=i; self._rb()
     def reset_to_main(self): self.stack.setCurrentIndex(0)
     def _rb(self):
         while self.stack.count(): self.stack.removeWidget(self.stack.widget(0))
@@ -28,7 +30,7 @@ class DetailPage(BasePage):
         self.stack.setCurrentIndex(0)
     def _m(self):
         w=QWidget(); w.setStyleSheet("background:transparent;"); l=QVBoxLayout(w)
-        t=QLabel(self.pj["n"]); t.setAlignment(Qt.AlignCenter)
+        t=QLabel(PROJECTS[self._pi]["name"]); t.setAlignment(Qt.AlignCenter)
         t.setFont(QFont("STKaiti",42,QFont.Bold)); t.setStyleSheet("background:transparent;")
         l.addWidget(t,stretch=1)
         ph=QLabel("3D 模型预览区"); ph.setAlignment(Qt.AlignCenter)
@@ -57,7 +59,7 @@ class DetailPage(BasePage):
     def _i(self):
         f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;padding:14px;}")
         lo=QVBoxLayout(f); lo.setSpacing(10)
-        for ti,bo in self.pj["s"]:
+        for ti,bo in get_sections(self._pi):
             a=QLabel(ti); a.setFont(QFont("Microsoft YaHei",13,QFont.Bold)); a.setStyleSheet("background:transparent;"); lo.addWidget(a)
             b=QLabel(bo); b.setWordWrap(True); b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background:transparent;color:#333;"); lo.addWidget(b)
         lo.addStretch(); return f
