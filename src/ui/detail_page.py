@@ -5,6 +5,95 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from src.ui.base_page import BasePage
 
+P = [
+    {"name":"葫芦雕刻","s":[("历史渊源","葫芦雕刻起源于宋代，合肥民间艺人以葫芦为载体创作精美工艺品。"),("技艺特点","以刀代笔进行浮雕镂空处理，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
+    {"name":"刘铭传故事","s":[("历史渊源","刘铭传，安徽合肥人，清末淮军名将、台湾首任巡抚。"),("技艺特点","以说书戏曲等形式讲述抗法保台故事，融合庐剧唱腔方言。"),("传承现状","多个社区定期举办故事会，2021年列入市级非遗名录。")]},
+    {"name":"包公故事","s":[("历史渊源","合肥流传千年的民间文学，围绕北宋名臣包拯生平事迹展开。"),("技艺特点","说唱结合，融合庐剧唱腔和地方方言，文化特色浓郁。"),("传承现状","2023年通过文创产品、数字展陈实现活态传承。")]},
+    {"name":"庐剧","s":[("历史渊源","庐剧原名倒七戏，安徽省主要地方剧种，流行江淮近两百年。"),("技艺特点","唱腔丰富分主调花腔，表演朴实细腻，伴奏以锣鼓为主。"),("传承现状","合肥庐剧院为传承主力，2006年入选首批国家级非遗。")]},
+    {"name":"火笔画","s":[("历史渊源","以铁扦为笔以火为墨烙绘，源于清代，江淮独有的民间美术形式。"),("技艺特点","不同温度烙铁烫出深浅褐色痕迹，一笔成型不可修改。"),("传承现状","合肥市设传习所，多位传承人，作品被博物馆收藏。")]},
+    {"name":"吴山铁字","s":[("历史渊源","源于肥西县吴山镇，铁画延伸，以铁为墨以锤为笔。"),("技艺特点","书法与锻造结合，字体苍劲有力，具独特金属质感。"),("传承现状","省级非遗，吴山镇建传承基地，作品成合肥文化名片。")]},
+]
+
+
+class DetailPage(BasePage):
+    go_home = Signal()
+    go_viewer = Signal()
+
+    def __init__(self, pi=2):
+        super().__init__()
+        self.pj = P[pi]
+        self.setAttribute(Qt.WA_StyledBackground, False)
+        lo = QVBoxLayout(self); lo.setContentsMargins(20,20,20,40)
+        self.stack = QStackedWidget(); self.stack.setStyleSheet("background: transparent;")
+        self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
+        lo.addWidget(self.stack)
+
+    def set_project(self,i): self.pj=P[i]; self._rebuild()
+    def reset_to_main(self): self.stack.setCurrentIndex(0)
+
+    def _rebuild(self):
+        while self.stack.count(): self.stack.removeWidget(self.stack.widget(0))
+        self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
+        self.stack.setCurrentIndex(0)
+
+    def _m(self):
+        w=QWidget(); w.setStyleSheet("background: transparent;"); l=QVBoxLayout(w)
+        t=QLabel(self.pj["name"]); t.setAlignment(Qt.AlignCenter); t.setFont(QFont("STKaiti",42,QFont.Bold))
+        t.setStyleSheet("background: transparent;"); l.addWidget(t,stretch=1)
+        ph=QLabel("3D 模型预览区"); ph.setAlignment(Qt.AlignCenter)
+        ph.setStyleSheet("background: rgba(255,255,255,0.3); border:2px dashed #aaa; border-radius:16px; font-size:20px; color:#666;")
+        l.addWidget(ph,stretch=4)
+        bl=QHBoxLayout(); bl.setAlignment(Qt.AlignCenter); bl.setSpacing(30)
+        for tx,sl in [("返回主页",self.go_home.emit),("非遗详情",lambda:self.stack.setCurrentIndex(1)),("交互展示",self.go_viewer.emit)]:
+            b=QPushButton(tx); b.setFixedSize(140,50); b.setFont(QFont("Microsoft YaHei",14))
+            b.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}")
+            b.clicked.connect(sl); bl.addWidget(b)
+        l.addLayout(bl,stretch=1); return w
+
+    def _d(self):
+        w=QWidget(); w.setStyleSheet("background: transparent;"); l=QVBoxLayout(w)
+        top=QHBoxLayout(); t=QLabel("庐州非遗"); t.setFont(QFont("STKaiti",28,QFont.Bold)); t.setStyleSheet("background: transparent;")
+        top.addWidget(t); top.addStretch()
+        bk=QPushButton("返回"); bk.setFixedSize(80,36)
+        bk.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,0.85);}")
+        bk.clicked.connect(lambda:self.stack.setCurrentIndex(0)); top.addWidget(bk); l.addLayout(top)
+        c=QHBoxLayout(); c.setSpacing(16); c.addWidget(self._i(),stretch=1); c.addWidget(self._v(),stretch=3); c.addWidget(self._im(),stretch=1)
+        l.addLayout(c,stretch=4)
+        nav=QHBoxLayout(); nav.setAlignment(Qt.AlignCenter); nav.setSpacing(30)
+        for nm,sl in [("返回主页",self.go_home.emit),("交互展示",self.go_viewer.emit)]:
+            b=QPushButton(nm); b.setFixedSize(140,44); b.setFont(QFont("Microsoft YaHei",13))
+            b.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,0.85);}")
+            b.clicked.connect(sl); nav.addWidget(b)
+        l.addLayout(nav); return w
+
+    def _i(self):
+        f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;padding:14px;}")
+        lo=QVBoxLayout(f); lo.setSpacing(10)
+        for ti,bo in self.pj["s"]:
+            a=QLabel(ti); a.setFont(QFont("Microsoft YaHei",13,QFont.Bold)); a.setStyleSheet("background: transparent;"); lo.addWidget(a)
+            b=QLabel(bo); b.setWordWrap(True); b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background: transparent; color:#333;"); lo.addWidget(b)
+        lo.addStretch(); return f
+
+    def _v(self):
+        f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
+        lo=QVBoxLayout(f); lb=QLabel("视频播放区"); lb.setAlignment(Qt.AlignCenter)
+        lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;"); lo.addWidget(lb); return f
+
+    def _im(self):
+        f=QFrame(); f.setStyleSheet("background: transparent;"); lo=QVBoxLayout(f); lo.setSpacing(10)
+        for i in range(3):
+            im=QLabel(f"图片 {i+1}"); im.setAlignment(Qt.AlignCenter)
+            im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px dashed #aaa;border-radius:6px;font-size:14px;color:#888;")
+            lo.addWidget(im,stretch=1)
+        return f
+
+"""详情页"""
+
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QStackedWidget, QFrame
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
+from src.ui.base_page import BasePage
+
 PROJECTS = [
     {"name": "葫芦雕刻", "sections": [
         ("历史渊源", "葫芦雕刻起源于宋代，合肥地区民间艺人以葫芦为载体，运用刻、烙、绘等技法创作出精美的工艺品。"),

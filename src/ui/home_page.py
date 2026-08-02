@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QGraphicsDropShadowEffect
 from src.ui.base_page import BasePage
 
 ITEMS = ["葫芦雕刻", "刘铭传故事", "包公故事", "庐剧", "火笔画", "吴山铁字"]
-_FROSTED = "QFrame { background: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.7); border-radius: 16px; } QFrame:hover { background: rgba(255,255,255,0.75); border: 2px solid #ff9900; }"
+_FROSTED = "QFrame { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); border-radius: 16px; } QFrame:hover { background: rgba(255,255,255,0.55); border: 2px solid #ff9900; }"
 
 
 class _ItemCard(QFrame):
@@ -41,7 +41,7 @@ class _ItemCard(QFrame):
     def set_selected(self, s: bool):
         if s:
             self.setFixedSize(175, 300)
-            self.setStyleSheet("QFrame { background: rgba(255,255,255,0.8); border: 3px solid #ff7700; border-radius: 18px; }")
+            self.setStyleSheet("QFrame { background: rgba(255,255,255,0.5); border: 3px solid #ff7700; border-radius: 18px; }")
         else:
             self.setFixedSize(160, 280)
             self.setStyleSheet(_FROSTED)
