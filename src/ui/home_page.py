@@ -2,7 +2,8 @@
 
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor
+from PySide6.QtWidgets import QGraphicsDropShadowEffect
 
 from src.ui.base_page import BasePage
 
@@ -59,7 +60,12 @@ class HomePage(BasePage):
         title = QLabel("庐州非遗")
         title.setAlignment(Qt.AlignCenter)
         title.setFont(QFont("STKaiti", 48, QFont.Bold))
-        title.setStyleSheet("background: transparent;")
+        title.setStyleSheet("background: transparent; color: #1a3a5c;")
+        glow = QGraphicsDropShadowEffect()
+        glow.setBlurRadius(20)
+        glow.setColor(QColor(200, 160, 60, 200))
+        glow.setOffset(0, 0)
+        title.setGraphicsEffect(glow)
         layout.addWidget(title, stretch=1)
         cl = QHBoxLayout()
         cl.setAlignment(Qt.AlignCenter)
