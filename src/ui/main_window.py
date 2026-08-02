@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         self.page_index = {"inheritor": 0, "home": 1, "detail": 2, "viewer": 3, "settings": 4}
         for p in self.pages.values():
             self.stack.addWidget(p)
+        self.stack.setCurrentIndex(1)  # 默认首页
 
         central = QWidget()
         central.setStyleSheet("background: transparent;")

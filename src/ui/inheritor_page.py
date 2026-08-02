@@ -47,18 +47,14 @@ class InheritorPage(BasePage):
         btn_down.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:30px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
         btn_down.clicked.connect(self._next)
         bottom_row.addWidget(btn_down)
-        layout.addLayout(bottom_row)
-
-        # 右下角圆形返回
-        back_layout = QHBoxLayout()
-        back_layout.addStretch()
+        bottom_row.addSpacing(10)
         btn_back = QPushButton("\u21A9", self)
         btn_back.setFixedSize(60, 60)
         btn_back.setFont(QFont("Arial", 24))
         btn_back.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:30px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
         btn_back.clicked.connect(self.go_home.emit)
-        back_layout.addWidget(btn_back)
-        layout.addLayout(back_layout)
+        bottom_row.addWidget(btn_back)
+        layout.addLayout(bottom_row)
 
     def _prev(self):
         self._index = (self._index - 1) % self._total
