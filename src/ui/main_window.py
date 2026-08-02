@@ -13,6 +13,7 @@ from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
+from src.ui.inheritor_page import InheritorPage
 from src.ui.settings_page import SettingsPage
 from src import config
 from src.logger import get_logger
@@ -64,12 +65,14 @@ class MainWindow(QMainWindow):
         # ---- 4 页框架 ----
         self.stack = QStackedWidget()
         self.pages = {
-            "home":     HomePage(),                              # index 0
+            "inheritor": InheritorPage(),                     # 0
+"home":     HomePage(),                              # index 0
+"inheritor": InheritorPage(),                     # 0
             "detail":   DetailPage(),                          # index 1
             "viewer":   ViewerPage(),                           # index 2
             "settings": SettingsPage(),                        # index 3
         }
-        self.page_index = {"home": 0, "detail": 1, "viewer": 2, "settings": 3}
+        self.page_index = {"inheritor": 0, "home": 1, "detail": 2, "viewer": 3, "settings": 4}
         for p in self.pages.values():
             self.stack.addWidget(p)
 
@@ -78,6 +81,7 @@ class MainWindow(QMainWindow):
         self.stack.setStyleSheet("background: transparent;")
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
+        self.pages["home"].go_inheritor.connect(lambda: self.stack.setCurrentIndex(0))
         layout.addWidget(self.stack)
         self.setCentralWidget(central)
 
@@ -85,15 +89,16 @@ class MainWindow(QMainWindow):
         self.pages["home"].item_selected.connect(self._go_detail)
         # HomePage: 关闭/打开摄像头
         
-        self.pages["settings"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
-        self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(0))
+        self.pages["settings"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
+        self.pages["inheritor"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
+        self.pages["detail"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
 
         self.pages["detail"].go_viewer.connect(lambda: self.stack.setCurrentIndex(2))
-        self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(1))
+        self.pages["viewer"].go_home.connect(lambda: self.stack.setCurrentIndex(2))
         # ---- 占位页按钮绑定（跳过 HomePage） ----
         for name, p in self.pages.items():
-            if name in ("home", "detail", "viewer", "settings"):
+            if name in ("home", "detail", "viewer", "settings", "inheritor"):
                 continue
             p.btn_home.clicked.connect(lambda: self.stack.setCurrentIndex(0))
             p.btn_detail.clicked.connect(lambda: self.stack.setCurrentIndex(1))
@@ -118,7 +123,7 @@ class MainWindow(QMainWindow):
         self.btn_settings_global.setFixedSize(80, 28)
         self.btn_settings_global.setFont(QFont("Microsoft YaHei", 10))
         self.btn_settings_global.setStyleSheet("QPushButton { background: rgba(255,255,255,0.7); border: 1px solid #aaa; border-radius: 6px; } QPushButton:hover { background: rgba(255,255,255,1); }")
-        self.btn_settings_global.clicked.connect(lambda: self.stack.setCurrentIndex(3))
+        self.btn_settings_global.clicked.connect(lambda: self.stack.setCurrentIndex(4))
         self.btn_settings_global.show()
         self.inference_thread.result_ready.connect(self._on_result)
 

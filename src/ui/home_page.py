@@ -50,6 +50,7 @@ class _ItemCard(QFrame):
 
 class HomePage(BasePage):
     item_selected = Signal(int)
+    go_inheritor = Signal()
 
     def __init__(self):
         super().__init__()
@@ -91,7 +92,8 @@ class HomePage(BasePage):
         seal.move(24,24)
 
     def _prev(self): self._current = (self._current - 1) % 6; self._update()
-    def _next(self): self._current = (self._current + 1) % 6; self._update()
+    def _next(self):
+        self.go_inheritor.emit()
     def _on_select(self, i: int): self._current = i; self._update()
     def _on_double(self, i: int): self._current = i; self._update(); self.item_selected.emit(self._current)
     def _update(self):

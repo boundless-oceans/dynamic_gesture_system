@@ -58,10 +58,10 @@ class DetailPage(BasePage):
         return w
     def _i(self):
         f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;padding:14px;}")
-        lo=QVBoxLayout(f); lo.setSpacing(10)
+        lo=QVBoxLayout(f); lo.setSpacing(7)
         for ti,bo in get_sections(self._pi):
-            a=QLabel(ti); a.setFont(QFont("Microsoft YaHei",13,QFont.Bold)); a.setStyleSheet("background:transparent;"); lo.addWidget(a)
-            b=QLabel(bo); b.setWordWrap(True); b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background:transparent;color:#333;"); lo.addWidget(b)
+            a=QLabel(ti); a.setFont(QFont("Microsoft YaHei",11,QFont.Bold)); a.setStyleSheet("background:transparent;"); lo.addWidget(a)
+            b=QLabel(bo); b.setMinimumHeight(60); b.setWordWrap(True); b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background:transparent;color:#333;"); lo.addWidget(b)
         lo.addStretch(); return f
     def _v(self):
         f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
