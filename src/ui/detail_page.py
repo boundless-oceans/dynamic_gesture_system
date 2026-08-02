@@ -48,7 +48,7 @@ class DetailPage(BasePage):
         self.project = PROJECTS[project_index]
         self.setAttribute(Qt.WA_StyledBackground, False)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(20, 20, 20, 40)
         self.stack = QStackedWidget()
         self.stack.setStyleSheet("background: transparent;")
         self.stack.addWidget(self._main())
@@ -94,7 +94,7 @@ class DetailPage(BasePage):
         l.addLayout(top)
         c = QHBoxLayout(); c.setSpacing(16)
         c.addWidget(self._intro(), stretch=1); c.addWidget(self._video(), stretch=3); c.addWidget(self._imgs(), stretch=1)
-        l.addLayout(c, stretch=5)
+        l.addLayout(c, stretch=4)
         nav = QHBoxLayout(); nav.setAlignment(Qt.AlignCenter); nav.setSpacing(30)
         for name, slot in [("返回主页", self.go_home.emit), ("交互展示", self.go_viewer.emit)]:
             btn = QPushButton(name); btn.setFixedSize(140, 44); btn.setFont(QFont("Microsoft YaHei", 13))
