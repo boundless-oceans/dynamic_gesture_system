@@ -72,9 +72,9 @@ class HomePage(BasePage):
         cl = QHBoxLayout()
         cl.setAlignment(Qt.AlignCenter)
         cl.setSpacing(20)
-        bl = QPushButton("<"); bl.setFixedSize(50, 50); bl.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
-        bl.setStyleSheet("QPushButton { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,0.9); }")
-        bl.clicked.connect(self._prev); cl.addWidget(bl)
+        self.btn_left = QPushButton("<"); self.btn_left.setFixedSize(50, 50); self.btn_left.setFont(QFont("Microsoft YaHei", 20, QFont.Bold))
+        self.btn_left.setStyleSheet("QPushButton { background: rgba(255,255,255,0.5); border: 1px solid rgba(255,255,255,0.6); border-radius: 25px; } QPushButton:hover { background: rgba(255,255,255,0.9); }")
+        self.btn_left.clicked.connect(self._prev); cl.addWidget(self.btn_left)
         for i, name in enumerate(ITEMS):
             c = _ItemCard(i, name); c.clicked.connect(self._on_select); c.double_clicked.connect(self._on_double)
             self._cards.append(c); cl.addWidget(c)
