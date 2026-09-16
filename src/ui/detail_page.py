@@ -87,6 +87,13 @@ class DetailPage(BasePage):
     def resume_video(self):
         if self._player is not None:
             self._player.play()
+    def is_video_view(self) -> bool:
+        """当前是否在"非遗详情"子页（有视频的那页）"""
+        return self.stack.currentIndex()==1
+    def seek(self, delta_ms):
+        """左/右抛出：视频快退/快进"""
+        if self._player is not None:
+            self._player.setPosition(max(0, self._player.position()+delta_ms))
     def showEvent(self,e):
         super().showEvent(e)
         if self.stack.currentIndex()==1: self.resume_video()

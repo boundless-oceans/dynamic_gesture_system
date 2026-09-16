@@ -84,8 +84,6 @@ class MainWindow(QMainWindow):
         self.pages["viewer"].load_model(slug)
         self.stack.setCurrentIndex(3)
     def _enter_inheritor(self):
-        # 进入传承人页时默认选中"向下"按钮
-        p=self.pages["inheritor"]; p._sel=0; p._apply_sel()
         self.stack.setCurrentIndex(0)
     def _tc(self):
         if self.cw._camera_thread and self.cw._camera_thread._running:
@@ -144,19 +142,30 @@ class MainWindow(QMainWindow):
         self._gc=0
         self._locks[g] = now
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
-        # "已执行"提示（立即显示，约 0.8s 后恢复）
-        self._toast_until = now + config.TOAST_MS
-        self._toast_text = "✔ 已执行：" + CONTROL_CN.get(g, g)
-        self.cw.set_custom(self._toast_text)
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
+        # "已执行"提示（立即显示，约 0.8s 后恢复）；视频页的左/右实际是快退/快进
+        label = CONTROL_CN.get(g, g)
+        if g in ("swipe_left","swipe_right") and (
+                cn=="inheritor" or (cn=="detail" and self.pages["detail"].is_video_view())):
+            label = "快退" if g=="swipe_left" else "快进"
+        self._toast_until = now + config.TOAST_MS
+        self._toast_text = "✔ 已执行：" + label
+        self.cw.set_custom(self._toast_text)
         if cn=="home":
             if g=="click": self._go_detail(self.pages["home"].current_index())
             elif g=="swipe_left": self.pages["home"]._prev()
             elif g=="swipe_right": self.pages["home"]._next()
         elif cn=="detail":
-            if g=="swipe_left": self.pages["detail"].select_prev()
-            elif g=="swipe_right": self.pages["detail"].select_next()
-            elif g=="click": self.pages["detail"].activate_selected()
+            d=self.pages["detail"]
+            if d.is_video_view():
+                # 非遗详情子页：左/右 = 视频快退/快进，点击 = 返回主视图
+                if g=="swipe_left": d.seek(-config.SEEK_STEP_MS)
+                elif g=="swipe_right": d.seek(config.SEEK_STEP_MS)
+                elif g=="click": d.activate_selected()
+            else:
+                if g=="swipe_left": d.select_prev()
+                elif g=="swipe_right": d.select_next()
+                elif g=="click": d.activate_selected()
         elif cn=="viewer":
             v=self.pages["viewer"]
             if g=="zoom_in": v.zoom_in()
@@ -165,10 +174,10 @@ class MainWindow(QMainWindow):
             elif g=="click": v.activate_selected()   # 确认"返回"
         elif cn=="inheritor":
             p=self.pages["inheritor"]
-            if g=="swipe_left": p.select_prev()          # 左/右切换选中[向下,返回]
-            elif g=="swipe_right": p.select_next()
-            elif g=="swipe_down": p._next()              # 向下抛出 = 直接翻下一位
-            elif g=="click": p.activate_selected()       # 点击 = 确认选中按钮
+            if g=="swipe_left": p.seek_back()            # 左/右 = 视频快退/快进
+            elif g=="swipe_right": p.seek_forward()
+            elif g=="swipe_down": p.next_person()        # 向下抛出 = 下一位
+            elif g=="click": p.confirm()                 # 点击 = 返回
         elif cn=="map":
             p=self.pages["map"]
             # 四个方向抛出 → 地图平移

@@ -54,6 +54,22 @@ def qr_path(index: int) -> str:
     return p if os.path.exists(p) else ""
 
 
+def inheritor_video(name: str) -> str:
+    """传承人页视频（assets/videos/inheritors/<name>）；不存在返回空串"""
+    if not name:
+        return ""
+    p = os.path.join(VIDEOS_DIR, "inheritors", name)
+    return p if os.path.exists(p) else ""
+
+
+def inheritor_photo(name: str) -> str:
+    """传承人页照片（assets/images/inheritors/<name>）；不存在返回空串"""
+    if not name:
+        return ""
+    p = os.path.join(IMAGES_DIR, "inheritors", name)
+    return p if os.path.exists(p) else ""
+
+
 def video_path(index: int) -> str:
     """介绍视频路径（.mp4）；不存在时返回空串"""
     s = slug_of(index)
