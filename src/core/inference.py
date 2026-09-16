@@ -28,6 +28,10 @@ class GestureRecognizer:
         # 后端选择：优先 ONNX Runtime(CPU)，否则回退 PyTorch
         self.model = None
         self._ort = None
+        # 权重状态：ok / missing / error:<原因>。非 ok 时不应启用推理
+        # （随机初始化的模型照样输出"看着挺像"的置信度，静默错误最难排查）
+        self.status = "ok"
+        self.status_detail = ""
         if config.USE_ONNX and os.path.exists(config.ONNX_MODEL_PATH):
             try:
                 import onnxruntime as ort
@@ -58,18 +62,25 @@ class GestureRecognizer:
         )
 
     def _load_weights(self):
-        """加载权重，不存在则使用随机初始化"""
-        if os.path.exists(config.MODEL_WEIGHTS_PATH):
-            print(f"[Inference] Loading weights from {config.MODEL_WEIGHTS_PATH}")
+        """加载权重。失败时记录到 self.status，由入口提示——绝不静默地用随机权重跑。"""
+        if not os.path.exists(config.MODEL_WEIGHTS_PATH):
+            print(f"[WARNING] No weights found at {config.MODEL_WEIGHTS_PATH}")
+            self.status = "missing"
+            self.status_detail = config.MODEL_WEIGHTS_PATH
+            return
+        print(f"[Inference] Loading weights from {config.MODEL_WEIGHTS_PATH}")
+        try:
             checkpoint = torch.load(config.MODEL_WEIGHTS_PATH, map_location=self.device, weights_only=False)
             sd = checkpoint.get('state_dict', checkpoint)
             # 模型结构与 checkpoint 严格对齐（DSTE + ECA），module. 前缀来自 DataParallel 训练
             self.model.load_state_dict(
                 {k.replace('module.', ''): v for k, v in sd.items()}, strict=True)
-            print("[Inference] Weights loaded.")
-        else:
-            print(f"[WARNING] No weights found at {config.MODEL_WEIGHTS_PATH}")
-            print("[WARNING] Using random initialized model (predictions will be meaningless)")
+        except Exception as e:
+            print(f"[ERROR] 权重加载失败: {e}")
+            self.status = "error"
+            self.status_detail = str(e)
+            return
+        print("[Inference] Weights loaded.")
 
     def _build_transform(self):
         """构建预处理 pipeline"""
@@ -143,15 +154,26 @@ class InferenceThread(QThread):
 
     def run(self):
         self._running = True
+        fails = 0
         while self._running:
-            window = self.frame_buffer.get_latest(config.SAMPLE_WINDOW_FRAMES)
-            # 攒满 ~1s 窗口再开始预测
-            if len(window) == config.SAMPLE_WINDOW_FRAMES:
-                # 在窗口内均匀抽 NUM_SEGMENTS 帧（旧→新），铺开时间跨度
-                idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
-                clip = [window[i] for i in idx]
-                # 始终发送（显示用）；触发与否由主窗口按置信度门槛决定
-                self.result_ready.emit(self.recognizer.predict(clip))
+            # 单次推理异常不能终止线程：否则界面一切正常、只有手势永久失效，
+            # 展台上最难排查的一种故障。这里跳过该帧继续跑。
+            try:
+                window = self.frame_buffer.get_latest(config.SAMPLE_WINDOW_FRAMES)
+                # 攒满整个采样窗口（约 0.5s @30fps）再开始预测
+                if len(window) == config.SAMPLE_WINDOW_FRAMES:
+                    # 在窗口内均匀抽 NUM_SEGMENTS 帧（旧→新），铺开时间跨度
+                    idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
+                    clip = [window[i] for i in idx]
+                    # 始终发送（显示用）；触发与否由主窗口按置信度门槛决定
+                    self.result_ready.emit(self.recognizer.predict(clip))
+                if fails:
+                    print(f"[Inference] 已恢复正常（此前连续异常 {fails} 次）", flush=True)
+                    fails = 0
+            except Exception as e:
+                fails += 1
+                if fails == 1 or fails % 50 == 0:
+                    print(f"[Inference] 推理异常（第 {fails} 次），跳过该帧继续: {e}", flush=True)
             self.msleep(config.INFERENCE_INTERVAL_MS)
 
     def stop(self):

@@ -95,6 +95,12 @@ class CameraWidget(QWidget):
     def _update_frame(self):
         if self._camera_thread is None:
             return
+        if not self._camera_thread.signal_ok():
+            # 掉线时不要停在最后一帧（看起来像正常），明确提示正在重连
+            self._label.setText("摄像头信号丢失\n正在自动重连…")
+            self._label.setStyleSheet(
+                "background-color: #1e1e1e; color: #e6a23c; font-size: 14px;")
+            return
         frame = self._camera_thread.get_frame()
         if frame is None:
             return

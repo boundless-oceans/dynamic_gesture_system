@@ -233,6 +233,10 @@ def make_temporal_module(net, n_segment, n_div=8, place='blockres', temporal_poo
     assert n_segment_list[-1] > 0
     print('=> n_segment per stage: {}'.format(n_segment_list))
 
+    # TemporalModule.count 是全局计数器，靠它按顺序索引 h_list。
+    # 每次构建都要从 0 开始，否则同进程内建第二个模型会越界（IndexError）。
+    TemporalModule.count = 0
+
     import torchvision
     if isinstance(net, torchvision.models.ResNet):
         if 'blockres' in place:

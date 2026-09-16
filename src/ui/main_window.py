@@ -76,7 +76,13 @@ class MainWindow(QMainWindow):
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
-        self.cw.start(self.frame_buffer); self.it.start()
+        self.cw.start(self.frame_buffer)
+        # 权重不可用时不启动推理：随机权重的输出看着"很正常"，
+        # 与其在展台上放一堆错误手势，不如只留摄像头预览、用鼠标操作。
+        if self.recognizer.status == "ok":
+            self.it.start()
+        else:
+            print(f"[Main] 权重状态={self.recognizer.status}，手势识别未启用", flush=True)
     def _go_detail(self,i):
         self.pages["detail"].set_project(i); self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(2)
