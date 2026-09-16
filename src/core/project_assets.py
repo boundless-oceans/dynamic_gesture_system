@@ -45,6 +45,22 @@ def model_path(index: int) -> str:
     return os.path.join(MODELS_DIR, f"{s}.glb") if s else ""
 
 
+def slide_paths(index: int) -> list:
+    """详情页主视图的轮播图（slide*.jpg 照片 + render*.jpg 3D 渲染）"""
+    s = slug_of(index)
+    if not s:
+        return []
+    d = os.path.join(IMAGES_DIR, s)
+    if not os.path.isdir(d):
+        return []
+    files = [f for f in os.listdir(d)
+             if (f.startswith("slide") or f.startswith("render"))
+             and f.lower().endswith((".jpg", ".png"))]
+    # 照片在前、3D 渲染在后
+    files.sort(key=lambda f: (1 if f.startswith("render") else 0, f))
+    return [os.path.join(d, f) for f in files]
+
+
 def qr_path(index: int) -> str:
     """项目二维码路径（扫码了解详情）；不存在时返回空串"""
     s = slug_of(index)
