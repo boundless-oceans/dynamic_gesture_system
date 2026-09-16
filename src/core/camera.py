@@ -73,12 +73,9 @@ class CameraThread(QThread):
     READ_FAIL_SLEEP_MS = 100
     READ_FAIL_REOPEN = 30
 
-    def __init__(self, frame_buffer, motion_gate=None):
+    def __init__(self, frame_buffer):
         super().__init__()
         self.frame_buffer = frame_buffer
-        # 动静门控：本线程每帧顺手喂一张缩略图判"有没有动"，
-        # 推理线程据此跳过静止时段（这里大部分时间阻塞在 cap.read()，算这个几乎免费）
-        self.motion_gate = motion_gate
         self.cap = None
         self._idx = config.CAMERA_INDEX
         self._current_frame = None
@@ -137,6 +134,9 @@ class CameraThread(QThread):
                 fails += 1
                 if fails == 1:
                     print("[Camera] 读帧失败，可能掉线；将自动重试重连", flush=True)
+                    # 掉线时清空缓冲：否则推理线程会一直对着最后那几十帧陈旧画面
+                    # 反复推理（满速空转），悬浮窗也会停在旧结果上
+                    self.frame_buffer.clear()
                 if fails % self.READ_FAIL_REOPEN == 0:
                     print(f"[Camera] 连续失败 {fails} 次，重新打开设备 {self._idx}", flush=True)
                     self._reopen()
@@ -158,9 +158,6 @@ class CameraThread(QThread):
             # 喂给模型：干净 RGB（与 IPN-Hand 训练帧一致，不做 CLAHE/模糊）
             feed = mirrored if config.CAMERA_MIRROR_FEED else rgb
             self.frame_buffer.push(feed)
-            # 顺手判一次动静（用喂模型的同一张图，避免被预览增强干扰判断）
-            if self.motion_gate is not None:
-                self.motion_gate.feed(feed)
 
             # 预览画面：可选 CLAHE + 去噪增强（仅显示用）
             preview = mirrored

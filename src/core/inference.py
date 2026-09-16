@@ -147,54 +147,83 @@ class GestureRecognizer:
         return results
 
 
-# 静止期间仍然按这个间隔发一条"无手势"结果：让主窗口的显示保持能正常到期
-# 变回"无手势"、并清掉锁存。只是发个字典，不做推理，开销可忽略。
-_IDLE_STUB_INTERVAL_MS = 500
-_IDLE_STUB = {"gesture": "0", "confidence": 0.0, "top3": [],
-              "raw_gesture": "0", "raw_confidence": 0.0}
-
-
 class InferenceThread(QThread):
-    """推理线程：定时从帧缓冲取帧，送入模型推理"""
+    """推理线程：定时从帧缓冲取帧，送入模型推理
+
+    长时间识别不到手势时按 IDLE_LADDER 逐档降低推理频率（空闲降频）。
+    """
 
     result_ready = Signal(dict)  # {"gesture": str, "confidence": float, "top3": list}
 
-    def __init__(self, frame_buffer, recognizer: GestureRecognizer, motion_gate=None):
+    def __init__(self, frame_buffer, recognizer: GestureRecognizer):
         super().__init__()
         self.frame_buffer = frame_buffer
         self.recognizer = recognizer
-        # 动静门控：画面没动作时跳过推理
-        self.motion_gate = motion_gate
         self._running = False
-        self._idle_stub_ms = 0.0
+        # 最近一次"识别到手势"的时刻（毫秒）。空闲降频就按它算空闲了多久。
+        self._last_active_ms = time.time() * 1000.0
+
+    # ---- 空闲降频 ----
+    def mark_active(self):
+        """外部（如重开摄像头）调用：把空闲计时清零，立刻回到全速档"""
+        self._last_active_ms = time.time() * 1000.0
+
+    def idle_ms(self) -> float:
+        return time.time() * 1000.0 - self._last_active_ms
+
+    def ladder_step(self) -> int:
+        """当前处于阶梯的第几档（0 = 全速）。空闲越久档位越深。"""
+        if not config.IDLE_LADDER_ENABLED or not config.IDLE_LADDER:
+            return 0
+        idle = self.idle_ms()
+        step = 0
+        for i, (threshold_ms, _) in enumerate(config.IDLE_LADDER):
+            if idle >= threshold_ms:
+                step = i
+        return step
+
+    def interval_ms(self, step: int) -> int:
+        """该档对应的推理间隔（毫秒）"""
+        if not config.IDLE_LADDER:
+            return config.INFERENCE_INTERVAL_MS
+        return config.IDLE_LADDER[min(step, len(config.IDLE_LADDER) - 1)][1]
 
     def run(self):
         self._running = True
+        self.mark_active()
         fails = 0
-        gated = False
+        step = 0
         while self._running:
             # 单次推理异常不能终止线程：否则界面一切正常、只有手势永久失效，
             # 展台上最难排查的一种故障。这里跳过该帧继续跑。
             try:
-                if self.motion_gate is not None and not self.motion_gate.active():
-                    self._on_gated(gated)
-                    gated = True
-                    self.msleep(config.MOTION_IDLE_POLL_MS)
-                    continue
-                if gated:
-                    # 恢复推理：平滑缓冲里是静止前的旧概率，混进去会让恢复后的
-                    # 第一条结果被稀释，直接丢掉重新积攒
+                new_step = self.ladder_step()
+                if new_step < step:
+                    # 从深档回到浅档（空闲够了又活跃起来）：平滑缓冲里是上次
+                    # 空闲前的旧概率，留着会稀释掉恢复后的第一条结果
                     self.recognizer.reset_smoothing()
-                    print("[Inference] 检测到动作，恢复推理", flush=True)
-                    gated = False
+                if new_step != step:
+                    print("[Inference] 空闲 %d 秒，推理间隔 %d ms"
+                          % (self.idle_ms() / 1000, self.interval_ms(new_step)), flush=True)
+                    step = new_step
+
                 window = self.frame_buffer.get_latest(config.SAMPLE_WINDOW_FRAMES)
+                if len(window) < config.SAMPLE_WINDOW_FRAMES:
+                    # 没有帧（摄像头刚启动/已关闭）不能算"空闲"——没数据不等于没人。
+                    # 否则启动时摄像头探测那几秒会把档位白白降下去。
+                    self.mark_active()
                 # 攒满整个采样窗口（约 0.5s @30fps）再开始预测
-                if len(window) == config.SAMPLE_WINDOW_FRAMES:
+                elif len(window) == config.SAMPLE_WINDOW_FRAMES:
                     # 在窗口内均匀抽 NUM_SEGMENTS 帧（旧→新），铺开时间跨度
                     idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
                     clip = [window[i] for i in idx]
+                    res = self.recognizer.predict(clip)
+                    # 识别到手势 → 立刻回到全速档（用即时的 raw 置信度，比平滑值
+                    # 反应更快；判据与触发门槛同一个值，空场景实测从不达标）
+                    if res.get("raw_confidence", 0.0) >= config.CONFIDENCE_THRESHOLD:
+                        self._last_active_ms = time.time() * 1000.0
                     # 始终发送（显示用）；触发与否由主窗口按置信度门槛决定
-                    self.result_ready.emit(self.recognizer.predict(clip))
+                    self.result_ready.emit(res)
                 if fails:
                     print(f"[Inference] 已恢复正常（此前连续异常 {fails} 次）", flush=True)
                     fails = 0
@@ -202,18 +231,7 @@ class InferenceThread(QThread):
                 fails += 1
                 if fails == 1 or fails % 50 == 0:
                     print(f"[Inference] 推理异常（第 {fails} 次），跳过该帧继续: {e}", flush=True)
-            self.msleep(config.INFERENCE_INTERVAL_MS)
-
-    def _on_gated(self, already_gated: bool):
-        """静止期间：首次进入时打一条日志，之后按固定间隔补发"无手势"结果"""
-        now = time.time() * 1000.0
-        if not already_gated:
-            print("[Inference] 画面静止，暂停推理（有动作会自动恢复）", flush=True)
-            self._idle_stub_ms = 0.0
-        if now - self._idle_stub_ms >= _IDLE_STUB_INTERVAL_MS:
-            self._idle_stub_ms = now
-            # 置信度 0 会清掉主窗口的锁存，并在显示保持到期后让悬浮窗回到"无手势"
-            self.result_ready.emit(dict(_IDLE_STUB))
+            self.msleep(self.interval_ms(step))
 
     def stop(self):
         self._running = False
