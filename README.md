@@ -20,7 +20,7 @@
 | 3D 交互展示 | three.js(r147) 加载 GLB 模型，自动居中/适配、自转，扁平模型自动侧倾 |
 | 传承人风采 | 5 位传承人（视频/照片），上下切换；左/右可快进快退视频 |
 | 非遗地图 | 高德瓦片地图，**地名常显**，手势平移 + 缩放 |
-| 设置/手势说明 | 操作对照表 |
+| 设置/说明 | 三标签页：手势对照表（按各页真实映射维护）/ 参数调节（现场调参滑条）/ 图片来源 |
 
 ### 手势交互（按页面）
 | 页面 | 手势 | 动作 |
@@ -83,9 +83,9 @@ python main.py
 
 ```
 dynamic_gesture_system/
-├── main.py                     入口
+├── main.py                     入口（权重不可用时弹窗告警并停用推理）
 ├── src/
-│   ├── config.py               全局配置（模型/推理/手势阈值/摄像头）
+│   ├── config.py               全局配置（模型/推理/手势阈值/摄像头/现场可调项）
 │   ├── core/
 │   │   ├── camera.py           摄像头采集（自动选外接、CLAHE 仅用于预览）
 │   │   ├── frame_buffer.py     线程安全帧缓冲
@@ -107,6 +107,14 @@ dynamic_gesture_system/
 │   ├── prepare_assets.py       从 F:\非遗资料 生成图片素材（含裁剪/轮播图）
 │   ├── fbx_to_glb.py           Blender 无头 FBX → GLB（归一化尺寸与中心）
 │   └── render_slides.py        Blender 渲染 3D 模型 → 轮播图
+├── tests/                      自动化测试（unittest，无需额外依赖）
+│   ├── test_gesture_gate.py    去抖/锁存/冷却状态机 + 六页手势路由
+│   ├── test_frame_buffer.py    帧缓冲
+│   ├── test_gesture_mapper.py  13 类索引与映射
+│   ├── test_config_tuning.py   现场调参文件的载入与容错
+│   ├── test_data_integrity.py  项目↔素材一致性
+│   ├── test_pages_construct.py 页面构造冒烟（含主窗口）
+│   └── manual/                 需要摄像头/显示器的交互式冒烟脚本
 ├── weights/                    模型权重（未入库）
 └── environment.yml / requirements.txt
 ```
@@ -128,7 +136,8 @@ dynamic_gesture_system/
 - 传承人页视频 → `assets/videos/inheritors/<文件名>.mp4`（文件名与 `inheritors.json` 中登记的一致）
 
 **授权**：包公祠实景照来自 Wikimedia Commons（CC BY-SA 3.0），署名与许可要求见
-`assets/images/CREDITS.md` —— **对外展示时需保留署名**，建议在设置页增加"图片来源"说明。
+`assets/images/CREDITS.md` —— **对外展示时需保留署名**，该说明已在
+设置页 →「图片来源」中呈现（含作者、来源、许可链接与修改说明）。
 
 ---
 
@@ -169,18 +178,42 @@ dynamic_gesture_system/
 
 > 识别偏慢/偏抖时：优先调 `CONFIDENCE_THRESHOLD`、`SMOOTH_FRAMES`、`ACTION_COOLDOWN_MS`。
 
+**其中 6 项可在应用内直接调**：设置页 →「参数调节」，拖动即时生效，不用改代码重启。
+
+| 可在界面调整 | 只能改代码 |
+|---|---|
+| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`MAX_LOCK_MS`、`DISPLAY_HOLD_MS` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS` |
+
+界面改动**默认只临时生效**，点「保存为默认」才写入 `config_local.json`（已 gitignore）——
+避免观众误拖后展台参数被永久改坏。该文件被写坏时数值会被夹到合法区间、类型不符则忽略。
+
 ---
 
-## 七、打包（PyInstaller，暂未执行）
+## 七、测试
+
+```bash
+python -m unittest discover -s tests -t .        # 全部（墙钟约 10 秒，主要是 torch/QtWebEngine 的导入）
+python -m unittest tests.test_gesture_gate -v    # 单个模块
+```
+
+标准库 `unittest`，不需要额外依赖。GUI 用例通过 `QT_QPA_PLATFORM=offscreen` 离屏运行。
+最要紧的是 `test_gesture_gate.py`——那套状态机是调试最久、也最容易被参数调整带坏的部分。
+交互式冒烟脚本在 `tests/manual/`，详见 `tests/README.md`。
+
+---
+
+## 八、打包（PyInstaller，暂未执行）
 
 - 体积估算：运行时依赖约 1.0GB（PySide6 + torch + OpenCV）+ 素材（图片 5MB、模型 31MB、视频约 125MB）→ **约 1.3GB**
+  （注：`gesture` 环境实测 1.7GB，其中含各包的 test 套件、头文件与 pip 缓存等不会被打进产物的内容；
+  torch 装的是 `+cpu` 版，没有 CUDA 库）
 - 需一并打包：`pages/`（three.js、GLTFLoader、leaflet）、`assets/`、`weights/`
 - 需收集：QtMultimedia 插件与 FFmpeg 后端 DLL（否则视频无法播放）、QtWebEngine 资源
 - `assets/videos/`、`assets/models/`、`weights/` 均在 `.gitignore` 中，打包时需从本地目录取
 
 ---
 
-## 八、参考
+## 九、参考
 
 - DSTE-Net：Dynamic Spatial-Temporal Excitation Network（本系统采用的时空激励结构）
 - TSM: Temporal Shift Module for Efficient Video Understanding — arXiv:1811.08383
