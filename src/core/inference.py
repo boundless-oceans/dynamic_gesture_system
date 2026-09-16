@@ -1,6 +1,7 @@
 """模型加载 + 推理"""
 
 import os
+import time
 from collections import deque
 
 import torch
@@ -102,6 +103,11 @@ class GestureRecognizer:
         tensor = self.transform(pil_frames)  # (24, 224, 224)
         return tensor.unsqueeze(0)           # (1, 24, 224, 224)
 
+    def reset_smoothing(self):
+        """清空概率平滑缓冲。动静门控恢复推理时调用：
+        缓冲里留的是静止之前的旧概率，不丢掉会把恢复后的结果稀释掉。"""
+        self._prob_win.clear()
+
     def predict(self, frames: list) -> dict:
         """
         推理单次（结果经最近 SMOOTH_FRAMES 次 softmax 平均平滑）
@@ -141,24 +147,46 @@ class GestureRecognizer:
         return results
 
 
+# 静止期间仍然按这个间隔发一条"无手势"结果：让主窗口的显示保持能正常到期
+# 变回"无手势"、并清掉锁存。只是发个字典，不做推理，开销可忽略。
+_IDLE_STUB_INTERVAL_MS = 500
+_IDLE_STUB = {"gesture": "0", "confidence": 0.0, "top3": [],
+              "raw_gesture": "0", "raw_confidence": 0.0}
+
+
 class InferenceThread(QThread):
     """推理线程：定时从帧缓冲取帧，送入模型推理"""
 
     result_ready = Signal(dict)  # {"gesture": str, "confidence": float, "top3": list}
 
-    def __init__(self, frame_buffer, recognizer: GestureRecognizer):
+    def __init__(self, frame_buffer, recognizer: GestureRecognizer, motion_gate=None):
         super().__init__()
         self.frame_buffer = frame_buffer
         self.recognizer = recognizer
+        # 动静门控：画面没动作时跳过推理
+        self.motion_gate = motion_gate
         self._running = False
+        self._idle_stub_ms = 0.0
 
     def run(self):
         self._running = True
         fails = 0
+        gated = False
         while self._running:
             # 单次推理异常不能终止线程：否则界面一切正常、只有手势永久失效，
             # 展台上最难排查的一种故障。这里跳过该帧继续跑。
             try:
+                if self.motion_gate is not None and not self.motion_gate.active():
+                    self._on_gated(gated)
+                    gated = True
+                    self.msleep(config.MOTION_IDLE_POLL_MS)
+                    continue
+                if gated:
+                    # 恢复推理：平滑缓冲里是静止前的旧概率，混进去会让恢复后的
+                    # 第一条结果被稀释，直接丢掉重新积攒
+                    self.recognizer.reset_smoothing()
+                    print("[Inference] 检测到动作，恢复推理", flush=True)
+                    gated = False
                 window = self.frame_buffer.get_latest(config.SAMPLE_WINDOW_FRAMES)
                 # 攒满整个采样窗口（约 0.5s @30fps）再开始预测
                 if len(window) == config.SAMPLE_WINDOW_FRAMES:
@@ -175,6 +203,17 @@ class InferenceThread(QThread):
                 if fails == 1 or fails % 50 == 0:
                     print(f"[Inference] 推理异常（第 {fails} 次），跳过该帧继续: {e}", flush=True)
             self.msleep(config.INFERENCE_INTERVAL_MS)
+
+    def _on_gated(self, already_gated: bool):
+        """静止期间：首次进入时打一条日志，之后按固定间隔补发"无手势"结果"""
+        now = time.time() * 1000.0
+        if not already_gated:
+            print("[Inference] 画面静止，暂停推理（有动作会自动恢复）", flush=True)
+            self._idle_stub_ms = 0.0
+        if now - self._idle_stub_ms >= _IDLE_STUB_INTERVAL_MS:
+            self._idle_stub_ms = now
+            # 置信度 0 会清掉主窗口的锁存，并在显示保持到期后让悬浮窗回到"无手势"
+            self.result_ready.emit(dict(_IDLE_STUB))
 
     def stop(self):
         self._running = False

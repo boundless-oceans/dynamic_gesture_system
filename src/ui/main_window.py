@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
+from src.core.motion_gate import MotionGate
 from src.core.gesture_mapper import index_to_control, CONTROL_CN
 from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
@@ -25,6 +26,12 @@ class MainWindow(QMainWindow):
         self.resize(1280,800)
         self.frame_buffer=FrameBuffer()
         self.recognizer=GestureRecognizer()
+        # 动静门控：画面静止时跳过推理，省下的算力正比于空闲时长
+        # （配置页可现场调灵敏度与宽限期；MOTION_GATE_ENABLED=False 即完全关闭）
+        self.motion_gate=MotionGate(
+            enabled=config.MOTION_GATE_ENABLED,
+            grace_ms=config.MOTION_GATE_GRACE_MS,
+            threshold=config.MOTION_THRESHOLD)
         self.stack=QStackedWidget()
         self.pages={
             "inheritor":InheritorPage(),"home":HomePage(),"detail":DetailPage(),
@@ -59,7 +66,7 @@ class MainWindow(QMainWindow):
         # 摄像头
         self.cw=CameraWidget(self); self.cw.setFixedSize(320,240); self.cw.show()
         # 推理
-        self.it=InferenceThread(self.frame_buffer,self.recognizer)
+        self.it=InferenceThread(self.frame_buffer,self.recognizer,self.motion_gate)
         self.it.result_ready.connect(self._on_result)
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
@@ -76,7 +83,8 @@ class MainWindow(QMainWindow):
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
-        self.cw.start(self.frame_buffer)
+        self.motion_gate.reset()
+        self.cw.start(self.frame_buffer, self.motion_gate)
         # 权重不可用时不启动推理：随机权重的输出看着"很正常"，
         # 与其在展台上放一堆错误手势，不如只留摄像头预览、用鼠标操作。
         if self.recognizer.status == "ok":
@@ -98,11 +106,14 @@ class MainWindow(QMainWindow):
             self.cw.stop(); self.cw.hide(); self.bc.setText("打开摄像头")
             # 清空缓冲：关摄像头后推理线程不再拿旧帧预测
             self.frame_buffer.clear()
-            self.recognizer._prob_win.clear()
+            self.recognizer.reset_smoothing()
         else:
             self.frame_buffer.clear()
-            self.recognizer._prob_win.clear()
-            self.cw.show(); self.cw.start(self.frame_buffer); self.bc.setText("关闭摄像头")
+            self.recognizer.reset_smoothing()
+            # 丢掉关摄像头前的参照帧，否则会拿"关之前"和"开之后"两帧相比
+            self.motion_gate.reset()
+            self.cw.show(); self.cw.start(self.frame_buffer, self.motion_gate)
+            self.bc.setText("关闭摄像头")
     def _on_result(self,r):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))

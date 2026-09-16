@@ -53,10 +53,10 @@ class CameraWidget(QWidget):
 
         self._timer.timeout.connect(self._update_frame)
 
-    def start(self, frame_buffer: FrameBuffer):
+    def start(self, frame_buffer: FrameBuffer, motion_gate=None):
         if self._camera_thread is not None:
             return
-        self._camera_thread = CameraThread(frame_buffer)
+        self._camera_thread = CameraThread(frame_buffer, motion_gate)
         self._camera_thread.frame_ready.connect(self._on_frame_ready)
         self._camera_thread.start()
         self._timer.start(33)
