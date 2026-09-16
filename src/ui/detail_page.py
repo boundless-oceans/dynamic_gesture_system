@@ -1,7 +1,7 @@
 """详情页"""
 import os
 
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame,QScrollArea
 from PySide6.QtCore import Qt,Signal,QUrl
 from PySide6.QtGui import QFont,QPixmap
 from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
@@ -159,12 +159,25 @@ class DetailPage(BasePage):
         bottom.addWidget(btn); l.addLayout(bottom)
         return w
     def _i(self):
-        f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;padding:14px;}")
-        lo=QVBoxLayout(f); lo.setSpacing(7)
+        f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
+        # 文字内容用滚动区包裹：框不够高时可滚动查看，避免文字被裁掉
+        inner=QWidget(); inner.setStyleSheet("background:transparent;")
+        lo=QVBoxLayout(inner); lo.setSpacing(10); lo.setContentsMargins(14,14,14,14)
         for ti,bo in get_sections(self._pi):
             a=QLabel(ti); a.setFont(QFont("Microsoft YaHei",11,QFont.Bold)); a.setStyleSheet("background:transparent;"); lo.addWidget(a)
-            b=QLabel(bo); b.setMinimumHeight(60); b.setWordWrap(True); b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background:transparent;color:#333;"); lo.addWidget(b)
-        lo.addStretch(); return f
+            b=QLabel(bo); b.setWordWrap(True); b.setMinimumHeight(40)
+            b.setFont(QFont("Microsoft YaHei",11)); b.setStyleSheet("background:transparent;color:#333;"); lo.addWidget(b)
+        lo.addStretch()
+        sa=QScrollArea(); sa.setWidgetResizable(True); sa.setFrameShape(QFrame.NoFrame)
+        sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
+                         "QScrollArea > QWidget > QWidget{background:transparent;}"
+                         "QScrollBar:vertical{width:8px;background:transparent;}"
+                         "QScrollBar::handle:vertical{background:rgba(0,0,0,0.25);border-radius:4px;}"
+                         "QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical{height:0;}")
+        sa.setWidget(inner)
+        outer=QVBoxLayout(f); outer.setContentsMargins(0,0,0,0); outer.addWidget(sa)
+        return f
     def _v(self):
         f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
         lo=QVBoxLayout(f)
