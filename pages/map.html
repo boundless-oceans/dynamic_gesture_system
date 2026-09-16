@@ -31,5 +31,12 @@ pts.forEach(function(p){
 // 手势缩放接口
 function zoomIn()  { map.zoomIn(); }
 function zoomOut() { map.zoomOut(); }
+
+// 手势平移接口（每次移动的像素距离，可调）
+var PAN_STEP = 150;
+function panUp()    { map.panBy([0, -PAN_STEP]); }
+function panDown()  { map.panBy([0,  PAN_STEP]); }
+function panLeft()  { map.panBy([-PAN_STEP, 0]); }
+function panRight() { map.panBy([ PAN_STEP, 0]); }
 </script>
 </body></html>

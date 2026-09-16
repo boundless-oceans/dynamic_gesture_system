@@ -46,3 +46,15 @@ class MapPage(BasePage):
 
     def zoom_out(self):
         self.web.page().runJavaScript("zoomOut()")
+
+    def pan_up(self):
+        self.web.page().runJavaScript("panUp()")
+
+    def pan_down(self):
+        self.web.page().runJavaScript("panDown()")
+
+    def pan_left(self):
+        self.web.page().runJavaScript("panLeft()")
+
+    def pan_right(self):
+        self.web.page().runJavaScript("panRight()")

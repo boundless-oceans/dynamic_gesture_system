@@ -164,8 +164,11 @@ class MainWindow(QMainWindow):
             elif g=="click": p.activate_selected()       # 点击 = 确认选中按钮
         elif cn=="map":
             p=self.pages["map"]
-            if g=="swipe_left": p.select_prev()
-            elif g=="swipe_right": p.select_next()
+            # 四个方向抛出 → 地图平移
+            if g=="swipe_up": p.pan_up()
+            elif g=="swipe_down": p.pan_down()
+            elif g=="swipe_left": p.pan_left()
+            elif g=="swipe_right": p.pan_right()
             elif g=="zoom_in": p.zoom_in()               # 张开两次 → 地图放大
             elif g=="zoom_out": p.zoom_out()             # 握拳(缩小) → 地图缩小
             elif g=="click": p.activate_selected()       # 确认"返回"
