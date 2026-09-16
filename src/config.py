@@ -28,6 +28,13 @@ CAMERA_INDEX = 0              # 0=默认摄像头
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAMERA_FPS = 30               # 采集帧率
+# 预览画面是否做 CLAHE 增强（仅显示用）。
+# 注意：喂给模型的帧始终是干净 RGB（与训练一致），不做增强。
+CAMERA_ENHANCE_PREVIEW = True
+# 喂给模型的帧是否先做水平镜像。
+# IPN-Hand 训练数据以右利手为主；若右手准、左手不准，
+# 可改成 False（喂不镜像帧）再对比左右手表现。
+CAMERA_MIRROR_FEED = True
 
 # ---- 帧缓冲 ----
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧

@@ -30,24 +30,28 @@ class CameraThread(QThread):
                 continue
 
             # BGR -> RGB
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            # 镜像翻转
-            frame = cv2.flip(frame, 1)
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # 预览始终镜像（对用户自然）
+            mirrored = cv2.flip(rgb, 1)
 
-            # 图像增强：CLAHE + 去噪
-            lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
-            l, a, b = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            l = clahe.apply(l)
-            lab = cv2.merge([l, a, b])
-            frame = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-            frame = cv2.GaussianBlur(frame, (3, 3), 0)
+            # 喂给模型：干净 RGB（与 IPN-Hand 训练帧一致，不做 CLAHE/模糊）
+            feed = mirrored if config.CAMERA_MIRROR_FEED else rgb
+            self.frame_buffer.push(feed)
+
+            # 预览画面：可选 CLAHE + 去噪增强（仅显示用）
+            preview = mirrored
+            if config.CAMERA_ENHANCE_PREVIEW:
+                lab = cv2.cvtColor(preview, cv2.COLOR_RGB2LAB)
+                l, a, b = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                l = clahe.apply(l)
+                lab = cv2.merge([l, a, b])
+                preview = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+                preview = cv2.GaussianBlur(preview, (3, 3), 0)
 
             self._mutex.lock()
-            self._current_frame = frame
+            self._current_frame = preview
             self._mutex.unlock()
-
-            self.frame_buffer.push(frame)
             self.frame_ready.emit()
             self.msleep(1000 // config.CAMERA_FPS)
 
