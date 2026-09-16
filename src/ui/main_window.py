@@ -1,4 +1,5 @@
 """主窗口"""
+import time
 from PySide6.QtWidgets import QMainWindow,QWidget,QVBoxLayout,QStackedWidget,QPushButton
 from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
@@ -62,6 +63,8 @@ class MainWindow(QMainWindow):
         self.bs.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,1);}")
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
         self._lg=None; self._gc=0
+        # 显示保持状态
+        self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0
     def start(self):
         self.cw.start(self.frame_buffer); self.it.start()
     def _go_detail(self,i=2):
@@ -80,7 +83,17 @@ class MainWindow(QMainWindow):
     def _on_result(self,r):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
-        self.cw.set_confidence(str(dg) if dc >= config.DISPLAY_CONFIDENCE else None, dc)
+        now=time.time()*1000.0
+        if dc >= config.DISPLAY_CONFIDENCE:
+            # 置信足够：立即更新，并记录时间
+            self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
+            self.cw.set_confidence(str(dg), dc)
+        elif self._disp_label is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
+            # 瞬时动态手势结束后：短暂保留上一次结果，不立刻变"无手势"
+            self.cw.set_confidence(self._disp_label, self._disp_conf)
+        else:
+            self._disp_label=None
+            self.cw.set_confidence(None, dc)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:

@@ -25,6 +25,8 @@ SMOOTH_FRAMES = 3
 CONFIDENCE_THRESHOLD = 0.6
 # 显示门槛：悬浮窗显示识别名所需的最低置信度（更低显示"无手势"）
 DISPLAY_CONFIDENCE = 0.35
+# 显示保持：高置信手势消失后，仍保留显示这么久（毫秒），避免瞬时动态手势一闪就没
+DISPLAY_HOLD_MS = 800
 
 # ---- 图像预处理 ----
 INPUT_SIZE = 224              # 送入网络尺寸
