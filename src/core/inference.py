@@ -1,6 +1,8 @@
 """模型加载 + 推理"""
 
 import os
+from collections import deque
+
 import torch
 import torchvision.transforms as T
 from PIL import Image
@@ -25,6 +27,8 @@ class GestureRecognizer:
         self.model.eval()
 
         self.transform = self._build_transform()
+        # 概率平滑缓冲：存放最近几次的 softmax
+        self._prob_win = deque(maxlen=max(1, config.SMOOTH_FRAMES))
 
     def _build_model(self):
         """构建 TSN + DSTE 模型"""
@@ -77,15 +81,18 @@ class GestureRecognizer:
 
     def predict(self, frames: list) -> dict:
         """
-        推理单次
+        推理单次（结果经最近 SMOOTH_FRAMES 次 softmax 平均平滑）
         frames: list of 8 numpy arrays
         returns: {"gesture": str, "confidence": float, "top3": [(label, prob), ...]}
         """
         with torch.no_grad():
             input_tensor = self.preprocess(frames).to(self.device)
-            output = self.model(input_tensor)       # (1, num_classes)
-            probs = torch.softmax(output, dim=1)     # (1, num_classes)
-            top3_prob, top3_idx = torch.topk(probs, k=3, dim=1)
+            output = self.model(input_tensor)          # (1, num_classes)
+            probs = torch.softmax(output, dim=1)        # (1, num_classes)
+
+            self._prob_win.append(probs)
+            smoothed = torch.stack(list(self._prob_win), dim=0).mean(0)  # 平滑
+            top3_prob, top3_idx = torch.topk(smoothed, k=3, dim=1)
 
         results = {
             "gesture": str(top3_idx[0, 0].item()),
@@ -112,10 +119,14 @@ class InferenceThread(QThread):
     def run(self):
         self._running = True
         while self._running:
-            frames = self.frame_buffer.get_latest(config.NUM_SEGMENTS)
-            if len(frames) == config.NUM_SEGMENTS:
-                result = self.recognizer.predict(frames)
-                self.result_ready.emit(result)
+            window = self.frame_buffer.get_latest(config.SAMPLE_WINDOW_FRAMES)
+            # 攒满 ~1s 窗口再开始预测
+            if len(window) == config.SAMPLE_WINDOW_FRAMES:
+                # 在窗口内均匀抽 NUM_SEGMENTS 帧（旧→新），铺开时间跨度
+                idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
+                clip = [window[i] for i in idx]
+                # 始终发送（显示用）；触发与否由主窗口按置信度门槛决定
+                self.result_ready.emit(self.recognizer.predict(clip))
             self.msleep(config.INFERENCE_INTERVAL_MS)
 
     def stop(self):

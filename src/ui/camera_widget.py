@@ -75,9 +75,8 @@ class CameraWidget(QWidget):
         self._conf_text.setText("")
         self.update()
 
-    def set_confidence(self, gesture: str, confidence: float):
-        
-        label = _LABELS.get(gesture, f"ID:{gesture}")
+    def set_confidence(self, gesture: str | None, confidence: float):
+        label = "无手势" if gesture is None else _LABELS.get(gesture, f"ID:{gesture}")
         self._gesture_text.setText(f"{label}")
         self._conf_text.setText(f"{confidence*100:.1f}%")
         self._gesture_text.raise_()

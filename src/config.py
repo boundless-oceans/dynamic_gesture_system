@@ -14,8 +14,17 @@ NUM_CLASSES = 13
 ARCH = "resnet50"
 
 # ---- 推理参数 ----
-NUM_SEGMENTS = 8              # 每次推理取 8 帧
+# 每次推理的帧数 = 模型 n_segment，由 checkpoint 固定（fc1 维度=8），不能改。
+NUM_SEGMENTS = 8
+# 从最近 ~0.5s 的缓冲里均匀抽 8 帧（铺开时间跨度，动态手势更完整、结果更稳）
+SAMPLE_WINDOW_FRAMES = 15     # ~0.5s @30fps（需 <= FRAME_BUFFER_MAX）
 INFERENCE_INTERVAL_MS = 200   # 推理间隔（毫秒）
+# 概率平滑：最近 SMOOTH_FRAMES 次的 softmax 取平均，抑制单次误判抖动
+SMOOTH_FRAMES = 3
+# 动作触发门槛：低于则不累加去抖/触发操作
+CONFIDENCE_THRESHOLD = 0.6
+# 显示门槛：悬浮窗显示识别名所需的最低置信度（更低显示"无手势"）
+DISPLAY_CONFIDENCE = 0.35
 
 # ---- 图像预处理 ----
 INPUT_SIZE = 224              # 送入网络尺寸

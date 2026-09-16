@@ -70,11 +70,20 @@ class MainWindow(QMainWindow):
     def _tc(self):
         if self.cw._camera_thread and self.cw._camera_thread._running:
             self.cw.stop(); self.cw.hide(); self.bc.setText("打开摄像头")
+            # 清空缓冲：关摄像头后推理线程不再拿旧帧预测
+            self.frame_buffer.clear()
+            self.recognizer._prob_win.clear()
         else:
+            self.frame_buffer.clear()
+            self.recognizer._prob_win.clear()
             self.cw.show(); self.cw.start(self.frame_buffer); self.bc.setText("关闭摄像头")
     def _on_result(self,r):
         gid=int(r["gesture"]); cf=r.get("confidence",0)
-        self.cw.set_confidence(str(gid),cf)
+        # 显示：始终刷新（低于显示门槛显示"无手势"）
+        self.cw.set_confidence(str(gid) if cf >= config.DISPLAY_CONFIDENCE else None, cf)
+        # 触发：只对高置信结果累加去抖/触发动作
+        if cf < config.CONFIDENCE_THRESHOLD:
+            return
         c=index_to_control(gid)
         if c: self._ocg(c)
     def _ocg(self,g):
