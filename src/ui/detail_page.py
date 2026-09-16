@@ -16,6 +16,28 @@ _BTN_NORMAL="QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba
 _BTN_SEL="QPushButton{background:rgba(255,255,255,0.92);border:3px solid #ffb300;border-radius:12px;}QPushButton:hover{background:#fff;}"
 _BACK_SEL="QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:30px;}QPushButton:hover{background:#fff;}"
 
+
+class _FitLabel(QLabel):
+    """按控件实际大小自动等比缩放图片，避免被裁切（二维码等竖版图尤其需要）"""
+    def __init__(self, path, pad=6, parent=None):
+        super().__init__(parent)
+        self._orig = QPixmap(path)
+        self._pad = pad
+        self.setAlignment(Qt.AlignCenter)
+        self.setMinimumHeight(60)
+    def resizeEvent(self, e):
+        super().resizeEvent(e)
+        self._rescale()
+    def showEvent(self, e):
+        super().showEvent(e)
+        self._rescale()
+    def _rescale(self):
+        if self._orig.isNull():
+            return
+        w = max(1, self.width() - 2*self._pad)
+        h = max(1, self.height() - 2*self._pad)
+        self.setPixmap(self._orig.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
 P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
    {"n":"刘铭传故事","s":[("历史渊源","刘铭传，安徽合肥人，清末淮军名将、台湾首任巡抚。"),("技艺特点","说书戏曲形式融合庐剧唱腔和合肥方言。"),("传承现状","多个社区定期举办故事会，列入市级非遗。")]},
    {"n":"包公故事","s":[("历史渊源","合肥流传千年的民间文学，围绕北宋名臣包拯生平事迹展开。"),("技艺特点","说唱结合融合庐剧唱腔，地方文化特色浓郁。"),("传承现状","2023年通过文创产品数字展陈实现活态传承。")]},
@@ -160,20 +182,16 @@ class DetailPage(BasePage):
         f=QFrame(); f.setStyleSheet("background:transparent;"); lo=QVBoxLayout(f); lo.setSpacing(8)
         lo.setContentsMargins(0,0,0,0)
         for i in range(3):
-            im=QLabel(); im.setAlignment(Qt.AlignCenter); im.setMinimumHeight(96)
             # 第 3 张：优先显示项目二维码（扫码了解），没有二维码时用详情图
             path = (_PA.qr_path(self._pi) or _PA.detail_path(self._pi, 3)) if i == 2 \
                    else _PA.detail_path(self._pi, i+1)
-            if i == 2 and path:
-                # 二维码用白底，保证对比度便于扫描
-                im.setStyleSheet("background:#fff;border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
-                im.setPixmap(QPixmap(path).scaled(240,240,Qt.KeepAspectRatio,Qt.SmoothTransformation))
-                lo.addWidget(im,stretch=1); continue
-            if os.path.exists(path):
-                im.setPixmap(QPixmap(path).scaled(260,150,Qt.KeepAspectRatio,Qt.SmoothTransformation))
-                im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
+            if path and os.path.exists(path):
+                im = _FitLabel(path)      # 自适应缩放，不会被裁切
+                im.setStyleSheet("background:#fff;border:1px solid rgba(255,255,255,0.6);border-radius:6px;"
+                                 if i == 2 else
+                                 "background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
             else:
-                im.setText(f"图片 {i+1}")
+                im=QLabel(f"图片 {i+1}"); im.setAlignment(Qt.AlignCenter); im.setMinimumHeight(60)
                 im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px dashed #aaa;border-radius:6px;font-size:14px;color:#888;")
             lo.addWidget(im,stretch=1)
         return f
