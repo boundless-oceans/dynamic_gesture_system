@@ -75,11 +75,17 @@ class CameraWidget(QWidget):
         self._conf_text.setText("")
         self.update()
 
-    def set_confidence(self, gesture: str, confidence: float):
-        
-        label = _LABELS.get(gesture, f"ID:{gesture}")
+    def set_confidence(self, gesture: str | None, confidence: float):
+        label = "无手势" if gesture is None else _LABELS.get(gesture, f"ID:{gesture}")
         self._gesture_text.setText(f"{label}")
         self._conf_text.setText(f"{confidence*100:.1f}%")
+        self._gesture_text.raise_()
+        self._conf_text.raise_()
+
+    def set_custom(self, text: str):
+        """直接设置显示文本（用于"已执行"提示等），不带置信度"""
+        self._gesture_text.setText(text)
+        self._conf_text.setText("")
         self._gesture_text.raise_()
         self._conf_text.raise_()
 

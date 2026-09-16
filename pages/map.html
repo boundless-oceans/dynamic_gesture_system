@@ -1,0 +1,42 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>庐州非遗地图</title>
+<style>
+body{margin:0;height:100vh;display:flex;flex-direction:column;}
+h2{text-align:center;font-family:STKaiti;font-size:36px;padding:16px 0 10px;margin:0;color:#3a5a3a;background:linear-gradient(180deg,#e8f0e0,#d8e8d0);}
+#map{flex:1;min-height:400px;}
+.pin-label{background:rgba(255,255,255,0.9);border:1px solid #b42828;border-radius:6px;
+  color:#b42828;font-family:"Microsoft YaHei";font-size:12px;padding:1px 5px;white-space:nowrap;}
+.pin-label:before{display:none;}
+</style>
+<link rel="stylesheet" href="leaflet.css"/>
+</head><body>
+<h2>庐州非遗地图</h2>
+<div id="map"></div>
+<script src="leaflet.js"></script>
+<script>
+var map=L.map('map').setView([31.82,117.22],11);
+L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:'1234',attribution:'高德'}).addTo(map);
+var pts=[
+  [31.78,117.28,"葫芦烙画"],[31.70,117.15,"刘铭传故事"],
+  [31.85,117.27,"包公故事"],[31.86,117.28,"庐剧"],
+  [31.83,117.22,"火笔画"],[31.95,117.10,"吴山铁字"]
+];
+pts.forEach(function(p){
+  var m=L.circleMarker([p[0],p[1]],{radius:10,fillColor:"#b42828",color:"#fff",weight:2,fillOpacity:0.9})
+   .addTo(map);
+  m.bindPopup("<b>"+p[2]+"</b>");   // 点击仍可弹出
+  // 常显地名标签（无需点击）
+  m.bindTooltip(p[2],{permanent:true,direction:"top",offset:[0,-8],className:"pin-label"});
+});
+
+// 手势缩放接口
+function zoomIn()  { map.zoomIn(); }
+function zoomOut() { map.zoomOut(); }
+
+// 手势平移接口（每次移动的像素距离，可调）
+var PAN_STEP = 150;
+function panUp()    { map.panBy([0, -PAN_STEP]); }
+function panDown()  { map.panBy([0,  PAN_STEP]); }
+function panLeft()  { map.panBy([-PAN_STEP, 0]); }
+function panRight() { map.panBy([ PAN_STEP, 0]); }
+</script>
+</body></html>
