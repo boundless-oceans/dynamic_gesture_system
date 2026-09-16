@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Read(//f/dste_dynamic_v4/**)"
-    ]
-  }
-}

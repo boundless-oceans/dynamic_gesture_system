@@ -7,3 +7,7 @@ weights/
 logs/
 .venv/
 venv/
+
+# Claude Code 本地配置（个人权限等，不进版本库）
+# 如需共享 .claude/settings.json 或 agents，用 git add -f 强制添加
+.claude/
