@@ -73,6 +73,8 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, idx):
         # 换页：清锁 + 重置去抖（要求在新页面重新做手势），避免带着上一页的锁
         self._locks.clear(); self._lg=None; self._gc=0
+        # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
+        self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
         self.cw.start(self.frame_buffer); self.it.start()
     def _go_detail(self,i):

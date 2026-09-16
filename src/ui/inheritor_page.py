@@ -46,13 +46,13 @@ class InheritorPage(BasePage):
         layout.addWidget(title)
 
         top_row = QHBoxLayout()
-        top_row.addStretch()
         btn_up = QPushButton("\u2191")
         btn_up.setFixedSize(50, 50)
         btn_up.setFont(QFont("Arial", 20))
         btn_up.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
         btn_up.clicked.connect(self._prev)
         top_row.addWidget(btn_up)
+        top_row.addStretch()            # \u2191 \u5de6\u5bf9\u9f50\uff1a\u907f\u5f00\u53f3\u4e0a\u89d2\u6444\u50cf\u5934\u60ac\u6d6e\u7a97
         layout.addLayout(top_row)
 
         # 主体：左侧文字 + 右侧视频
@@ -92,7 +92,13 @@ class InheritorPage(BasePage):
         self._vh_lo = QVBoxLayout(self._video_holder); self._vh_lo.setContentsMargins(0,0,0,0)
         self._media.addWidget(self._video_holder)     # 1: 视频
         vl.addWidget(self._media)
-        content.addWidget(video_frame, stretch=2)
+        # 右侧视频略微下移，给右上角摄像头悬浮窗让出主要空间；
+        # 若仍有少量重叠，摄像头在最上层（内容不会盖住画面）
+        right_col = QVBoxLayout()
+        right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.addSpacing(115)          # 视频高度约为原来的 5/4
+        right_col.addWidget(video_frame)
+        content.addLayout(right_col, stretch=2)
 
         layout.addLayout(content, stretch=1)
 
