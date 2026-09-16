@@ -6,10 +6,10 @@ import os
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # ---- 模型 ----
-# 权重文件路径（训好以后放这里）
-MODEL_WEIGHTS_PATH = os.path.join(ROOT_DIR, "weights", "dste_net.pth")
-# 类别数（EgoGesture: 83）
-NUM_CLASSES = 83
+# 权重文件路径（IPN Hand 预训练模型）
+MODEL_WEIGHTS_PATH = os.path.join(ROOT_DIR, "weights", "TSQ_ipnhand_RGB_resnet50_shift0.50_blockres_avg_segment8_e50.pth")
+# 类别数（IPN Hand: 13）
+NUM_CLASSES = 13
 # Backbone
 ARCH = "resnet50"
 
