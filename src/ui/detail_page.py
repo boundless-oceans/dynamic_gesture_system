@@ -1,11 +1,12 @@
 """详情页"""
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame,QGraphicsDropShadowEffect
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
 from PySide6.QtCore import Qt,Signal
-from PySide6.QtGui import QFont,QColor
+from PySide6.QtGui import QFont
 from src.core.project_data import PROJECTS, get_sections
 from src.ui.hover_button import HoverButton
 from src.ui.base_page import BasePage
 
+# 选中用金色边框表示；不改动 HoverButton 原本的浮动阴影
 _BTN_NORMAL="QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}"
 _BTN_SEL="QPushButton{background:rgba(255,255,255,0.92);border:3px solid #ffb300;border-radius:12px;}QPushButton:hover{background:#fff;}"
 
@@ -72,13 +73,9 @@ class DetailPage(BasePage):
         if self._btns: self._actions[self._sel]()
 
     def _apply_sel(self):
+        # 仅用金色边框标记选中，保留 HoverButton 的浮动阴影效果
         for i,b in enumerate(self._btns):
-            if i==self._sel:
-                glow=QGraphicsDropShadowEffect(); glow.setBlurRadius(28)
-                glow.setColor(QColor(255,180,0,230)); glow.setOffset(0,0)
-                b.setGraphicsEffect(glow); b.setStyleSheet(_BTN_SEL)
-            else:
-                b.setGraphicsEffect(None); b.setStyleSheet(_BTN_NORMAL)
+            b.setStyleSheet(_BTN_SEL if i==self._sel else _BTN_NORMAL)
     def _d(self):
         w=QWidget(); w.setStyleSheet("background:transparent;"); l=QVBoxLayout(w)
         top=QHBoxLayout(); t=QLabel("庐州非遗"); t.setFont(QFont("STKaiti",28,QFont.Bold))

@@ -5,6 +5,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from src.ui.base_page import BasePage
 
+_BTN_BASE="QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}"
+_BTN_SEL="QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:25px;}QPushButton:hover{background:#fff;}"
+
 NAMES = ["姚公庙姚氏", "肥西刘氏说书人", "合肥包公故事会", "丁玉兰", "刘凯", "邓之元"]
 BODIES = [
     "姚氏葫芦雕刻世家，祖籍合肥姚公庙。第三代传人姚师傅自幼随父学艺，从事葫芦雕刻四十余年。作品以浮雕、镂空技法见长，题材涵盖人物、花鸟、山水，多次获省工艺美术展金奖。现为省级非遗传承人，在合肥设立工作室带徒传艺。",
@@ -84,16 +87,22 @@ class InheritorPage(BasePage):
         btn_down.setFixedSize(50, 50)
         btn_down.setFont(QFont("Arial", 20))
         btn_down.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
-        btn_down.clicked.connect(self._next)
+        btn_down.clicked.connect(lambda: self._on_btn(0))
         bottom_row.addWidget(btn_down)
         bottom_row.addSpacing(10)
         btn_back = QPushButton("\u21A9", self)
         btn_back.setFixedSize(50, 50)
         btn_back.setFont(QFont("Arial", 20))
         btn_back.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
-        btn_back.clicked.connect(self.go_home.emit)
+        btn_back.clicked.connect(lambda: self._on_btn(1))
         bottom_row.addWidget(btn_back)
         layout.addLayout(bottom_row)
+
+        # 可选中集合：[向下(翻页), 返回]，进入时默认选中"向下"
+        self._sel=0
+        self._sel_btns=[btn_down, btn_back]
+        self._sel_actions=[self._next, self.go_home.emit]
+        self._apply_sel()
 
     def _prev(self):
         self._index = (self._index - 1) % self._total
@@ -102,6 +111,26 @@ class InheritorPage(BasePage):
     def _next(self):
         self._index = (self._index + 1) % self._total
         self._update()
+
+    def _on_btn(self, i):
+        """鼠标点击按钮：同步选中态并执行"""
+        self._sel = i; self._apply_sel(); self._sel_actions[i]()
+
+    def select_prev(self):
+        """向左：在[向下, 返回]间循环选中"""
+        self._sel = (self._sel - 1) % len(self._sel_btns); self._apply_sel()
+
+    def select_next(self):
+        """向右：在[向下, 返回]间循环选中"""
+        self._sel = (self._sel + 1) % len(self._sel_btns); self._apply_sel()
+
+    def activate_selected(self):
+        """确认：执行当前选中按钮"""
+        self._sel_actions[self._sel]()
+
+    def _apply_sel(self):
+        for i, b in enumerate(self._sel_btns):
+            b.setStyleSheet(_BTN_SEL if i == self._sel else _BTN_BASE)
 
     def _update(self):
         self._name_label.setText(NAMES[self._index])

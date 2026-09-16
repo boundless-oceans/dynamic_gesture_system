@@ -38,7 +38,7 @@ class MainWindow(QMainWindow):
         # 信号
         h=self.pages["home"]
         h.item_selected.connect(self._go_detail)
-        h.go_inheritor.connect(lambda:self.stack.setCurrentIndex(0))
+        h.go_inheritor.connect(self._enter_inheritor)
         h.go_map.connect(lambda:self.stack.setCurrentIndex(5))
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(lambda:self.stack.setCurrentIndex(3))
@@ -69,6 +69,10 @@ class MainWindow(QMainWindow):
     def _go_detail(self,i):
         self.pages["detail"].set_project(i); self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(2)
+    def _enter_inheritor(self):
+        # 进入传承人页时默认选中"向下"按钮
+        p=self.pages["inheritor"]; p._sel=0; p._apply_sel()
+        self.stack.setCurrentIndex(0)
     def _tc(self):
         if self.cw._camera_thread and self.cw._camera_thread._running:
             self.cw.stop(); self.cw.hide(); self.bc.setText("打开摄像头")
@@ -126,8 +130,16 @@ class MainWindow(QMainWindow):
             elif g=="zoom_out": v.zoom_out()
             elif g=="circle": v.circle()
         elif cn=="inheritor":
-            # 传承人页只保留向右翻页
-            if g=="swipe_right": self.pages["inheritor"]._next()
+            p=self.pages["inheritor"]
+            if g=="swipe_left": p.select_prev()          # 左/右切换选中[向下,返回]
+            elif g=="swipe_right": p.select_next()
+            elif g=="swipe_down": p._next()              # 向下抛出 = 直接翻下一位
+            elif g=="click": p.activate_selected()       # 点击 = 确认选中按钮
+        elif cn=="map":
+            p=self.pages["map"]
+            if g=="swipe_left": p.select_prev()
+            elif g=="swipe_right": p.select_next()
+            elif g=="click": p.activate_selected()       # 确认"返回"
     def resizeEvent(self,e):
         super().resizeEvent(e)
         self.cw.setGeometry(self.width()-340,20,320,240); self.cw.raise_()
