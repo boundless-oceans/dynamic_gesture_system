@@ -30,15 +30,64 @@ JOBS = {
 }
 
 
+TARGET_SIZE = 1.0   # 归一化后每个模型的最大边长
+
+
 def _convert_one(src: str, dst: str):
-    """在 Blender 里执行（blender --background --python 本文件 -- src dst）"""
+    """在 Blender 里执行（blender --background --python 本文件 -- src dst）
+
+    步骤：导入 FBX → 烘焙骨骼姿态为静态网格 → 删除骨架/空物体 →
+          居中到原点 → 统一缩放到最大边长 TARGET_SIZE → 导出 GLB。
+    这样导出的模型尺寸/位置一致，three.js 里量包围盒不会出偏差。
+    """
     import bpy  # noqa: 仅在 Blender 内可用
+    from mathutils import Vector, Matrix
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.fbx(filepath=src)
+
+    # 1) 网格对象：convert 会应用修改器（含 Armature），把姿态烘焙成静态网格
+    meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in meshes:
+        o.select_set(True)
+    if meshes:
+        bpy.context.view_layer.objects.active = meshes[0]
+        bpy.ops.object.convert(target="MESH")
+
+    # 2) 删除非网格对象（骨架、空物体、灯光、相机）
+    for o in list(bpy.context.scene.objects):
+        if o.type != "MESH":
+            bpy.data.objects.remove(o, do_unlink=True)
+
+    # 3) 世界坐标包围盒 → 中心与最大边长
+    mn = Vector((1e18,) * 3)
+    mx = Vector((-1e18,) * 3)
+    for o in bpy.context.scene.objects:
+        if o.type != "MESH":
+            continue
+        for c in o.bound_box:
+            w = o.matrix_world @ Vector(c)
+            mn = Vector((min(mn[i], w[i]) for i in range(3)))
+            mx = Vector((max(mx[i], w[i]) for i in range(3)))
+    if not bpy.context.scene.objects:
+        print("WARN: 未导入到任何网格", src)
+    center = (mn + mx) / 2
+    size = mx - mn
+    s = TARGET_SIZE / max(size) if max(size) > 0 else 1.0
+
+    # 4) 先平移使中心归零，再整体缩放（绕原点），最后把变换烘进网格数据
+    M = Matrix.Scale(s, 4) @ Matrix.Translation(-center)
+    for o in bpy.context.scene.objects:
+        o.matrix_world = M @ o.matrix_world
+    bpy.ops.object.select_all(action="SELECT")
+    if bpy.context.scene.objects:
+        bpy.context.view_layer.objects.active = bpy.context.scene.objects[0]
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_apply=True)
-    print("OK ->", dst)
+    bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB")
+    print("OK -> %s | 原尺寸=%s 缩放=%.4f" % (dst, tuple(round(v, 2) for v in size), s))
 
 
 def main():

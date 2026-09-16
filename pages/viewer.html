@@ -40,21 +40,56 @@ function init() {
     animate();
 }
 
-// 把模型居中并按包围盒自动设置相机距离
-function fitCameraToObject(obj, offset) {
-    offset = offset || 1.5;
-    const box = new THREE.Box3().setFromObject(obj);
+// 取景距离倍数（模型已在导出时归一化，通常不需要；个别想更小就调这个）
+const FIT_SCALE = {};
+
+// 量包围盒：骨骼模型（人偶）要按"骨骼世界坐标"算，
+// 否则 SkinnedMesh 的静态几何盒会严重偏小（相机会钻进模型、旋转轴也会错）
+function measureBox(root) {
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
+    let any = false;
+    root.traverse(function (o) {
+        if (o.isSkinnedMesh && o.skeleton && o.skeleton.bones && o.skeleton.bones.length) {
+            o.skeleton.bones.forEach(function (b) {
+                box.expandByPoint(b.getWorldPosition(v)); any = true;
+            });
+        } else if (o.isMesh && o.geometry) {
+            if (!o.geometry.boundingBox) { o.geometry.computeBoundingBox(); }
+            if (o.geometry.boundingBox) {
+                box.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); any = true;
+            }
+        }
+    });
+    if (!any || box.isEmpty()) { box.setFromObject(root); }
+    return box;
+}
+
+// 把模型装进 Group：偏移 Group 使模型居中；之后旋转 Group = 绕模型自身中心旋转
+function fitCameraToGroup(group, name) {
+    const box = measureBox(group);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    obj.position.sub(center);
+    group.position.sub(center);            // 居中（对内部带偏移的模型也有效）
+
     const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const minDim = Math.max(Math.min(size.x, size.y, size.z), 1e-6);
+    // 极扁模型（匾额/挂屏）给初始侧倾，避免自转时总是侧对镜头
+    if (maxDim / minDim > 5) { group.rotation.x -= 0.35; }
+
     const fov = camera.fov * Math.PI / 180;
-    const dist = (maxDim / 2) / Math.tan(fov / 2) * offset;
+    const scale = FIT_SCALE[name] || 1;
+    const dist = (maxDim / 2) / Math.tan(fov / 2) * 1.5 * scale;
     camera.position.set(0, 0, dist);
     camera.near = Math.max(dist / 100, 0.01);
     camera.far = dist * 100;
     camera.updateProjectionMatrix();
     camera.lookAt(0, 0, 0);
+
+    console.log('[viewer] ' + name + ' | size=' + maxDim.toFixed(2) +
+                ' | scale=' + scale + ' | dist=' + dist.toFixed(2) +
+                ' | flat=' + (maxDim / minDim > 5));
 }
 
 const loader = new THREE.GLTFLoader();
@@ -70,11 +105,19 @@ function loadModel(name) {
         object.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
         object = null;
     }
+    console.log('[viewer] loading ../assets/models/' + name + '.glb');
     loader.load('../assets/models/' + name + '.glb',
         function (gltf) {
-            object = gltf.scene;
-            scene.add(object);
-            fitCameraToObject(object);
+            console.log('[viewer] loaded ' + name);
+            const group = new THREE.Group();
+            group.add(gltf.scene);
+            // 单面材质从背面看是空的（会"看到模型内部"），统一改双面
+            gltf.scene.traverse(function (o) {
+                if (o.isMesh && o.material) { o.material.side = THREE.DoubleSide; }
+            });
+            scene.add(group);
+            object = group;                 // 自转/手势旋转作用在这个 Group 上
+            fitCameraToGroup(group, name);
             tip.style.display = 'none';
         },
         undefined,
