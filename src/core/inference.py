@@ -46,10 +46,10 @@ class GestureRecognizer:
         if os.path.exists(config.MODEL_WEIGHTS_PATH):
             print(f"[Inference] Loading weights from {config.MODEL_WEIGHTS_PATH}")
             checkpoint = torch.load(config.MODEL_WEIGHTS_PATH, map_location=self.device, weights_only=False)
-            if 'state_dict' in checkpoint:
-                self.model.load_state_dict({k.replace('module.', ''): v for k, v in checkpoint.get('state_dict', checkpoint).items()}, strict=False)
-            else:
-                self.model.load_state_dict(checkpoint, strict=False)
+            sd = checkpoint.get('state_dict', checkpoint)
+            # 模型结构与 checkpoint 严格对齐（DSTE + ECA），module. 前缀来自 DataParallel 训练
+            self.model.load_state_dict(
+                {k.replace('module.', ''): v for k, v in sd.items()}, strict=True)
             print("[Inference] Weights loaded.")
         else:
             print(f"[WARNING] No weights found at {config.MODEL_WEIGHTS_PATH}")

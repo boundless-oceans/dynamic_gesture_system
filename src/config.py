@@ -35,6 +35,6 @@ FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
 # ---- 去抖 ----
 CONSISTENCY_COUNT = 3         # 连续 N 次相同结果才输出
 
-# ---- 手势标签（EgoGesture 83类，占位，后续从 assets/gestures.json 读取）----
-# 完整标签列表见 DSTE-NET代码 数据集标注文件
+# ---- 手势标签（IPN-Hand 13 类，对应 assets/gestures.json）----
+# 完整标签码见 gesture_mapper.py 的 IPN_HAND_LABELS
 GESTURE_LABELS: dict = {}

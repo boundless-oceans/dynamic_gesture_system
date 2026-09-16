@@ -1,49 +1,75 @@
-"""测试 F7: 手势映射"""
+"""测试 F7: 手势映射（IPN-Hand 13 类 → 控制手势）"""
 
-from src.core.gesture_mapper import map_gesture, index_to_control, EGO_TO_CONTROL
-
-
-def test_mapped_gestures():
-    """已映射的手势应该返回对应控制手势"""
-    assert map_gesture("swipe_left") == "swipe_left"
-    assert map_gesture("SWIPE_RIGHT") == "swipe_right"  # 大小写不敏感
-    assert map_gesture("zoom_in") == "zoom_in"
-    assert map_gesture("click") == "click"
-    assert map_gesture("double_click") == "click"  # 双击也映射到 click
-    assert map_gesture("palm") == "palm"
-    assert map_gesture("circle") == "circle"
-    print("test_mapped_gestures passed")
+from src.core.gesture_mapper import (
+    IPN_HAND_LABELS,
+    IPN_TO_CONTROL,
+    CONTROL_GESTURES,
+    index_to_control,
+    label_of,
+    label_cn,
+)
 
 
-def test_unmapped_gestures():
-    """未映射的手势应该返回 None"""
-    assert map_gesture("grab") is None
-    assert map_gesture("fist") is None
-    assert map_gesture("mute") is None
-    assert map_gesture("") is None
-    print("test_unmapped_gestures passed")
+def test_label_order():
+    """索引顺序 = IPN-Hand 官方 id 顺序（排除 D0X 无手势类）"""
+    assert IPN_HAND_LABELS == [
+        "B0A", "B0B", "G01", "G02", "G03", "G04", "G05",
+        "G06", "G07", "G08", "G09", "G10", "G11",
+    ]
+    assert len(IPN_HAND_LABELS) == 13
+    # 索引 → 标签码
+    assert label_of(0) == "B0A"
+    assert label_of(12) == "G11"
+    assert label_of(13) is None
+    assert label_of(-1) is None
+    # 中文名可用（显示用）
+    assert label_cn(2) == "单击"
+    assert label_cn(99).startswith("ID:")
+    print("test_label_order passed")
 
 
-def test_index_mapping():
-    """索引映射测试"""
-    # 无标签表时，以字符串索引查找
-    result = index_to_control(0)  # "0" 不在映射表中
-    assert result is None
-    print("test_index_mapping passed")
+def test_direction_mapping():
+    """方向抛出 → 对应滑动"""
+    assert index_to_control(4) == "swipe_up"      # G03 向上抛出
+    assert index_to_control(5) == "swipe_down"    # G04 向下抛出
+    assert index_to_control(6) == "swipe_left"    # G05 向左抛出
+    assert index_to_control(7) == "swipe_right"   # G06 向右抛出
+    print("test_direction_mapping passed")
 
 
-def test_all_control_gestures_covered():
-    """确保 9 种控制手势都在映射表中"""
-    mapped_values = set(EGO_TO_CONTROL.values())
-    from src.core.gesture_mapper import CONTROL_GESTURES
-    assert CONTROL_GESTURES == mapped_values, \
-        f"缺失控制手势: {CONTROL_GESTURES - mapped_values}"
-    print("test_all_control_gestures_covered passed")
+def test_action_mapping():
+    """单击/双击→click，张开两次→palm，放大/缩小→zoom"""
+    assert index_to_control(2) == "click"          # G01 单击
+    assert index_to_control(9) == "click"          # G08 双击
+    assert index_to_control(8) == "palm"           # G07 张开两次
+    assert index_to_control(11) == "zoom_in"       # G10 放大
+    assert index_to_control(12) == "zoom_out"      # G11 缩小
+    print("test_action_mapping passed")
+
+
+def test_unmapped():
+    """未绑定控制手势的类别/越界返回 None"""
+    assert index_to_control(0) is None   # B0A 单指指向
+    assert index_to_control(1) is None   # B0B 双指指向
+    assert index_to_control(3) is None   # G02 双指点击
+    assert index_to_control(10) is None  # G09 双指双击
+    assert index_to_control(13) is None  # 越界
+    assert index_to_control(-1) is None  # 越界
+    print("test_unmapped passed")
+
+
+def test_control_gestures_valid():
+    """所有映射值都必须是已声明的控制手势"""
+    assert IPN_TO_CONTROL, "映射表不应为空"
+    for code, ctrl in IPN_TO_CONTROL.items():
+        assert ctrl in CONTROL_GESTURES, f"{code} -> {ctrl} 不是合法控制手势"
+    print("test_control_gestures_valid passed")
 
 
 if __name__ == "__main__":
-    test_mapped_gestures()
-    test_unmapped_gestures()
-    test_index_mapping()
-    test_all_control_gestures_covered()
+    test_label_order()
+    test_direction_mapping()
+    test_action_mapping()
+    test_unmapped()
+    test_control_gestures_valid()
     print("All F7 tests passed!")
