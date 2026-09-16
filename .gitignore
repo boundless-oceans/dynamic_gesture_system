@@ -24,3 +24,6 @@ dist/
 # Blender 备份
 *.blend1
 
+
+# 介绍视频（体积大，本地保留；转码压缩后再考虑入库）
+assets/videos/

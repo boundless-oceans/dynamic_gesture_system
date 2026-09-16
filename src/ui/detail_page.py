@@ -2,8 +2,10 @@
 import os
 
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
-from PySide6.QtCore import Qt,Signal
+from PySide6.QtCore import Qt,Signal,QUrl
 from PySide6.QtGui import QFont,QPixmap
+from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from src.core.project_data import PROJECTS, get_sections
 from src.core import project_assets as _PA
 from src.ui.hover_button import HoverButton
@@ -27,18 +29,48 @@ class DetailPage(BasePage):
         super().__init__(); self._pi=pi
         # 主视图三个按钮的选中状态（手势左/右切换）
         self._sel=0; self._btns=[]; self._actions=[]
+        # 视频播放器（仅非遗详情子页使用）
+        self._player=None; self._audio=None; self._vwidget=None
 
         self.setAttribute(Qt.WA_StyledBackground,False)
         lo=QVBoxLayout(self); lo.setContentsMargins(20,20,20,40)
         self.stack=QStackedWidget(); self.stack.setStyleSheet("background:transparent;")
         self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
+        self.stack.currentChanged.connect(self._on_subpage)
         lo.addWidget(self.stack)
     def set_project(self,i): self._pi=i; self._rb()
     def reset_to_main(self): self.stack.setCurrentIndex(0)
+    def _on_subpage(self, idx):
+        """离开非遗详情子页时暂停视频，回来时继续"""
+        if idx != 1:
+            self.pause_video()
+        else:
+            self.resume_video()
     def _rb(self):
+        self._dispose_video()
         while self.stack.count(): self.stack.removeWidget(self.stack.widget(0))
         self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
         self.stack.setCurrentIndex(0)
+    def _dispose_video(self):
+        """切项目/重建时释放播放器"""
+        if self._player is not None:
+            self._player.stop()
+            self._player.setSource(QUrl())
+            self._player = None
+        self._audio = None
+        self._vwidget = None
+    def pause_video(self):
+        if self._player is not None:
+            self._player.pause()
+    def resume_video(self):
+        if self._player is not None:
+            self._player.play()
+    def showEvent(self,e):
+        super().showEvent(e)
+        if self.stack.currentIndex()==1: self.resume_video()
+    def hideEvent(self,e):
+        super().hideEvent(e)
+        self.pause_video()
     def _m(self):
         w=QWidget(); w.setStyleSheet("background:transparent;"); l=QVBoxLayout(w)
         t=QLabel(PROJECTS[self._pi]["name"]); t.setAlignment(Qt.AlignCenter)
@@ -106,8 +138,24 @@ class DetailPage(BasePage):
         lo.addStretch(); return f
     def _v(self):
         f=QFrame(); f.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
-        lo=QVBoxLayout(f); lb=QLabel("视频播放区"); lb.setAlignment(Qt.AlignCenter)
-        lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;"); lo.addWidget(lb); return f
+        lo=QVBoxLayout(f)
+        path=_PA.video_path(self._pi)
+        if path:
+            self._player=QMediaPlayer(self)
+            self._audio=QAudioOutput(self); self._audio.setVolume(0.6)
+            self._player.setAudioOutput(self._audio)
+            vw=QVideoWidget(); vw.setAspectRatioMode(Qt.KeepAspectRatio)
+            self._player.setVideoOutput(vw)
+            self._player.setLoops(QMediaPlayer.Infinite)     # 循环播放
+            self._player.setSource(QUrl.fromLocalFile(path))
+            self._player.play()
+            self._vwidget=vw
+            lo.addWidget(vw)
+        else:
+            lb=QLabel("暂无视频"); lb.setAlignment(Qt.AlignCenter)
+            lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
+            lo.addWidget(lb)
+        return f
     def _im(self):
         f=QFrame(); f.setStyleSheet("background:transparent;"); lo=QVBoxLayout(f); lo.setSpacing(8)
         lo.setContentsMargins(0,0,0,0)
