@@ -16,11 +16,11 @@ class MapPage(BasePage):
         self.setAttribute(Qt.WA_StyledBackground, False)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        web = QWebEngineView()
-        web.settings().setAttribute(web.settings().WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        self.web = QWebEngineView()
+        self.web.settings().setAttribute(self.web.settings().WebAttribute.LocalContentCanAccessRemoteUrls, True)
         html = os.path.join(os.path.dirname(__file__), "../../pages/map.html")
-        web.load(QUrl.fromLocalFile(os.path.abspath(html)))
-        layout.addWidget(web)
+        self.web.load(QUrl.fromLocalFile(os.path.abspath(html)))
+        layout.addWidget(self.web)
         bl = QHBoxLayout(); bl.addStretch()
         btn = QPushButton("\u21A9"); btn.setFixedSize(50, 50)
         btn.setFont(QFont("Arial", 20))
@@ -40,3 +40,9 @@ class MapPage(BasePage):
 
     def activate_selected(self):
         self.go_home.emit()
+
+    def zoom_in(self):
+        self.web.page().runJavaScript("zoomIn()")
+
+    def zoom_out(self):
+        self.web.page().runJavaScript("zoomOut()")

@@ -82,6 +82,13 @@ class CameraWidget(QWidget):
         self._gesture_text.raise_()
         self._conf_text.raise_()
 
+    def set_custom(self, text: str):
+        """直接设置显示文本（用于"已执行"提示等），不带置信度"""
+        self._gesture_text.setText(text)
+        self._conf_text.setText("")
+        self._gesture_text.raise_()
+        self._conf_text.raise_()
+
     def _on_frame_ready(self):
         pass
 

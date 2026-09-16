@@ -3,6 +3,9 @@
 body{margin:0;height:100vh;display:flex;flex-direction:column;}
 h2{text-align:center;font-family:STKaiti;font-size:36px;padding:16px 0 10px;margin:0;color:#3a5a3a;background:linear-gradient(180deg,#e8f0e0,#d8e8d0);}
 #map{flex:1;min-height:400px;}
+.pin-label{background:rgba(255,255,255,0.9);border:1px solid #b42828;border-radius:6px;
+  color:#b42828;font-family:"Microsoft YaHei";font-size:12px;padding:1px 5px;white-space:nowrap;}
+.pin-label:before{display:none;}
 </style>
 <link rel="stylesheet" href="leaflet.css"/>
 </head><body>
@@ -18,8 +21,15 @@ var pts=[
   [31.83,117.22,"火笔画"],[31.95,117.10,"吴山铁字"]
 ];
 pts.forEach(function(p){
-  L.circleMarker([p[0],p[1]],{radius:10,fillColor:"#b42828",color:"#fff",weight:2,fillOpacity:0.9})
-   .addTo(map).bindPopup("<b>"+p[2]+"</b>");
+  var m=L.circleMarker([p[0],p[1]],{radius:10,fillColor:"#b42828",color:"#fff",weight:2,fillOpacity:0.9})
+   .addTo(map);
+  m.bindPopup("<b>"+p[2]+"</b>");   // 点击仍可弹出
+  // 常显地名标签（无需点击）
+  m.bindTooltip(p[2],{permanent:true,direction:"top",offset:[0,-8],className:"pin-label"});
 });
+
+// 手势缩放接口
+function zoomIn()  { map.zoomIn(); }
+function zoomOut() { map.zoomOut(); }
 </script>
 </body></html>

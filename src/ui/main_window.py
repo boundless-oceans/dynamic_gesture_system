@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
-from src.core.gesture_mapper import index_to_control
+from src.core.gesture_mapper import index_to_control, CONTROL_CN
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
@@ -62,6 +62,9 @@ class MainWindow(QMainWindow):
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
         self._lg=None; self._gc=0
         self._cooldown_until=0.0   # 动作冷却截止时间(ms)
+        self._locks=set()          # 已触发且未"松手"的动作（防重复触发）
+        self._toast_until=0.0      # "已执行"提示截止时间(ms)
+        self._toast_text=""
         # 显示保持状态
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0
     def start(self):
@@ -87,17 +90,26 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        cur=self._disp_label
-        # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
-        if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
-            self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
-            self.cw.set_confidence(str(dg), dc)
-        elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
-            # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
-            self.cw.set_confidence(cur, self._disp_conf)
+        # 松手判定：即时置信低于显示门槛 → 解锁所有动作，并重置去抖
+        # （要求重新做出手势才能再触发，避免用残留的平滑结果重复触发）
+        if dc < config.DISPLAY_CONFIDENCE:
+            self._locks.clear()
+            self._lg=None; self._gc=0
+        # "已执行"提示优先显示
+        if now < self._toast_until:
+            self.cw.set_custom(self._toast_text)
         else:
-            self._disp_label=None
-            self.cw.set_confidence(None, dc)
+            cur=self._disp_label
+            # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
+            if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
+                self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
+                self.cw.set_confidence(str(dg), dc)
+            elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
+                # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
+                self.cw.set_confidence(cur, self._disp_conf)
+            else:
+                self._disp_label=None
+                self.cw.set_confidence(None, dc)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:
@@ -114,7 +126,15 @@ class MainWindow(QMainWindow):
         else: self._lg=g; self._gc=1; return
         if self._gc<config.CONSISTENCY_COUNT: return
         self._gc=0
+        # 锁存：该动作已执行且用户尚未松手 → 不重复触发
+        if g in self._locks:
+            return
+        self._locks.add(g)
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+        # "已执行"提示（立即显示，约 0.8s 后恢复）
+        self._toast_until = now + config.TOAST_MS
+        self._toast_text = "✔ 已执行：" + CONTROL_CN.get(g, g)
+        self.cw.set_custom(self._toast_text)
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
         if cn=="home":
             if g=="click": self._go_detail(self.pages["home"].current_index())
@@ -139,6 +159,8 @@ class MainWindow(QMainWindow):
             p=self.pages["map"]
             if g=="swipe_left": p.select_prev()
             elif g=="swipe_right": p.select_next()
+            elif g=="zoom_in": p.zoom_in()               # 张开两次 → 地图放大
+            elif g=="zoom_out": p.zoom_out()             # 握拳(缩小) → 地图缩小
             elif g=="click": p.activate_selected()       # 确认"返回"
     def resizeEvent(self,e):
         super().resizeEvent(e)

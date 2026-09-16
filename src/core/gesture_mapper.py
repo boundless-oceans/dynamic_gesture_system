@@ -55,6 +55,19 @@ IPN_TO_CONTROL: dict[str, str] = {
 }
 
 
+# 控制动作 → 中文短语（用于"已执行"提示）
+CONTROL_CN: dict[str, str] = {
+    "swipe_left": "向左",
+    "swipe_right": "向右",
+    "swipe_down": "向下",
+    "click": "确认",
+    "zoom_in": "放大",
+    "zoom_out": "缩小",
+    "circle": "旋转",
+    "palm": "返回首页",
+}
+
+
 def label_of(idx: int) -> str | None:
     """索引 → IPN-Hand 标签码，越界返回 None"""
     if 0 <= idx < len(IPN_HAND_LABELS):

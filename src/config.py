@@ -13,6 +13,12 @@ NUM_CLASSES = 13
 # Backbone
 ARCH = "resnet50"
 
+# ---- 推理后端 ----
+# 实测：本模型(含动态分组卷积) ONNX Runtime CPU 比 PyTorch 更慢(0.72x)，故默认关闭。
+# 保留开关与导出脚本，便于将来在其它 CPU/OpenVINO 上复用。
+USE_ONNX = False
+ONNX_MODEL_PATH = os.path.join(ROOT_DIR, "weights", "gesture.onnx")
+
 # ---- 推理参数 ----
 # 每次推理的帧数 = 模型 n_segment，由 checkpoint 固定（fc1 维度=8），不能改。
 NUM_SEGMENTS = 8
@@ -56,7 +62,9 @@ FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
 # ---- 去抖 ----
 CONSISTENCY_COUNT = 3         # 连续 N 次相同结果才输出
 # 动作冷却：触发一次操作后，这么久内不再响应新操作（避免连续手势疯狂翻页/缩放）
-ACTION_COOLDOWN_MS = 1200
+ACTION_COOLDOWN_MS = 1000
+# "已执行"提示时长（毫秒）：触发动作后右上角短暂提示，之后恢复显示
+TOAST_MS = 800
 
 # ---- 手势标签（IPN-Hand 13 类，对应 assets/gestures.json）----
 # 完整标签码见 gesture_mapper.py 的 IPN_HAND_LABELS

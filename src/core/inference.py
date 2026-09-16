@@ -21,14 +21,26 @@ class GestureRecognizer:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"[Inference] Using device: {self.device}")
 
-        self.model = self._build_model()
-        self._load_weights()
-        self.model.to(self.device)
-        self.model.eval()
-
         self.transform = self._build_transform()
         # 概率平滑缓冲：存放最近几次的 softmax
         self._prob_win = deque(maxlen=max(1, config.SMOOTH_FRAMES))
+
+        # 后端选择：优先 ONNX Runtime(CPU)，否则回退 PyTorch
+        self.model = None
+        self._ort = None
+        if config.USE_ONNX and os.path.exists(config.ONNX_MODEL_PATH):
+            try:
+                import onnxruntime as ort
+                self._ort = ort.InferenceSession(
+                    config.ONNX_MODEL_PATH, providers=['CPUExecutionProvider'])
+                print(f"[Inference] Using ONNX Runtime (CPU): {config.ONNX_MODEL_PATH}")
+            except Exception as e:
+                print(f"[Inference] ONNX 加载失败，回退 PyTorch: {e}")
+        if self._ort is None:
+            self.model = self._build_model()
+            self._load_weights()
+            self.model.to(self.device)
+            self.model.eval()
 
     def _build_model(self):
         """构建 TSN + DSTE 模型"""
@@ -85,10 +97,16 @@ class GestureRecognizer:
         frames: list of 8 numpy arrays
         returns: {"gesture": str, "confidence": float, "top3": [(label, prob), ...]}
         """
+        if self._ort is not None:
+            inp = self.preprocess(frames).numpy()          # (1,24,224,224) float32
+            out = self._ort.run(None, {self._ort.get_inputs()[0].name: inp})[0]
+            logits = torch.from_numpy(out)
+        else:
+            with torch.inference_mode():
+                logits = self.model(self.preprocess(frames).to(self.device))
+
         with torch.inference_mode():
-            input_tensor = self.preprocess(frames).to(self.device)
-            output = self.model(input_tensor)          # (1, num_classes)
-            probs = torch.softmax(output, dim=1)        # (1, num_classes)
+            probs = torch.softmax(logits, dim=1)        # (1, num_classes)
 
             # 即时结果（显示用，跟手）
             raw_conf, raw_idx = torch.max(probs, dim=1)
