@@ -277,7 +277,9 @@ class DetailPage(BasePage):
             self._player.setVideoOutput(vw)
             self._player.setLoops(QMediaPlayer.Infinite)     # 循环播放
             self._player.setSource(QUrl.fromLocalFile(path))
-            self._player.play()
+            # 构造时不 play()：这个页面在启动时就建好了但并不可见，
+            # 一旦 play() 就会在后台解码整段视频（还带音轨）。
+            # 播放交给 _on_subpage()/showEvent() —— 切到"非遗详情"子页时才真正开始。
             self._vwidget=vw
             lo.addWidget(vw)
         else:
