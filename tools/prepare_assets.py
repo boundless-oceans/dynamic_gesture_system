@@ -34,10 +34,14 @@ MAPPING = {
     },
     "liumingchuan": {
         "thumb": os.path.join(U, "Res", "ModelImg", "2刘铭传.png"),
+        # 改用项目资料里的高清原图（李德荣摄）
         "details": [
-            os.path.join(C, "Bottom", "刘铭传.jpg"),
-            os.path.join(C, "Bottom", "刘铭传旧居.jpg"),
-            os.path.join(C, "Bottom", "刘铭传墓园.jpg"),
+            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
+                         "刘铭传旧居 “宫保第”1  李德荣摄   13705609710_wps图片.jpg"),
+            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
+                         "潜山埋忠骨（刘铭传墓园）李德荣摄_   13705609710.jpg"),
+            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
+                         "肥西刘铭传故居    李德荣摄   13705609710.jpg"),
         ],
     },
     "baogong": {
@@ -127,6 +131,65 @@ def copy_qrs():
         print(f"  ✓ {slug}/qr.png  {im.size}  <- {fn}")
 
 
+# 详情页主视图的"作品轮播图"：使用与详情页(1~3.jpg)不重复的其他照片
+# 生成 assets/images/<slug>/slide1.jpg, slide2.jpg ...
+SLIDES = {
+    "hulu": [
+        # 传承人郑小良绘制葫芦的工作照（比纯摆件照有变化）
+        os.path.join(M2, "葫芦烙画", "mmexport1572247988256.jpg"),
+        os.path.join(M2, "葫芦烙画", "IMG_20200520_105609.jpg"),
+    ],
+    "luju": [
+        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "2016年元旦戏曲晚会《秦雪梅观画》.png"),
+        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "周总理接见庐剧演员.png"),
+        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "安徽省倒七戏剧团梁祝.png"),
+        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "半把剪刀.png"),
+    ],
+    "liumingchuan": [
+        # 高清实拍（故居红楼门、宫保第）+ 刘铭传画像
+        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "680811d938913148a5346d661938083.jpg"),
+        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
+                     "刘铭传旧居 “宫保第”2  李德荣摄   13705609710_wps图片.jpg"),
+        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居", "刘铭传.png"),
+    ],
+    "baogong": [
+        # 连环画/皮影 + 包公祠实景照（CC BY-SA 3.0，见 assets/images/CREDITS.md）
+        os.path.join(C, "BGGSImages", "巧断浮江尸.jpg"),
+        os.path.join(C, "BGGSImages", "包公吃鱼.png"),
+        os.path.join(OUT_ROOT, "_external", "baogong_temple.jpg"),
+    ],
+    "huobihua": [
+        os.path.join(MAT, "文化馆项目资料整理", "火笔画", "火笔画申报书配套照片", f"{n:02d}.jpg")
+        for n in (4, 6, 8)
+    ],
+    "wushantiezi": [
+        os.path.join(M2, "吴山铁字", "吴山铁字照片 邓之元",
+                     "邓华丽2020年于铁硏居拍摄，图为合肥第十四届国际文博会长丰县展区吴山铁字作品展.jpg"),
+        os.path.join(M2, "吴山铁字", "吴山铁字照片 邓之元",
+                     "邓华丽  2020年于吴山铁研居拍摄。图为铁硏居书法创作台，背景是吴山铁字工艺制作的《庆园春·雪》.jpg"),
+        os.path.join(M2, "吴山铁字", "吴山铁字照片 邓之元",
+                     "镇文广站工作人员2020年于铁硏居拍摄，图为省级非遗传承人邓之元为吴山小学的学生讲解吴山铁字的相关历史.jpg"),
+    ],
+}
+
+
+def build_slides():
+    """生成详情页主视图的轮播图（与详情页图不重复）"""
+    print("\n[轮播图]")
+    for slug, srcs in SLIDES.items():
+        out_dir = os.path.join(OUT_ROOT, slug)
+        # 先清掉旧的 slide*.jpg，避免源减少时残留多余图
+        if os.path.isdir(out_dir):
+            for f in os.listdir(out_dir):
+                if f.startswith("slide") and f.lower().endswith((".jpg", ".png")):
+                    os.remove(os.path.join(out_dir, f))
+        for i, s in enumerate(srcs, 1):
+            if not os.path.exists(s):
+                print(f"  ✗ {slug} slide{i} 源缺失: {os.path.basename(s)}"); continue
+            size, n = convert(s, os.path.join(out_dir, f"slide{i}.jpg"), DETAIL)
+            print(f"  ✓ {slug}/slide{i}.jpg {size} {n//1024}KB  <- {os.path.basename(s)[:38]}")
+
+
 def _load_rgb(src: str) -> Image.Image:
     im = Image.open(src)
     if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
@@ -188,6 +251,7 @@ def main():
                 size, n = convert(ps, os.path.join(out_dir, "portrait.jpg"), THUMB, crop)
                 print(f"  ✓ portrait.jpg {size} {n//1024}KB  <- {os.path.basename(ps)}{note}")
     copy_qrs()
+    build_slides()
     print("\n== 缺失/待补 ==" if missing else "\n== 全部完成 ==")
     for m in missing:
         print("  ", m)
