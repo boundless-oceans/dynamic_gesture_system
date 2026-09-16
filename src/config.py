@@ -26,7 +26,7 @@ NUM_SEGMENTS = 8
 SAMPLE_WINDOW_FRAMES = 15     # ~0.5s @30fps（需 <= FRAME_BUFFER_MAX）
 INFERENCE_INTERVAL_MS = 20    # 循环额外间隔（毫秒）。推理本身已是瓶颈，这里只防忙等
 # 概率平滑：最近 SMOOTH_FRAMES 次的 softmax 取平均，抑制单次误判抖动
-SMOOTH_FRAMES = 3
+SMOOTH_FRAMES = 2
 # 动作触发门槛：低于则不累加去抖/触发操作
 CONFIDENCE_THRESHOLD = 0.6
 # 显示门槛：悬浮窗显示识别名所需的最低置信度（更低显示"无手势"）
@@ -60,7 +60,7 @@ CAMERA_MIRROR_FEED = True
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
 
 # ---- 去抖 ----
-CONSISTENCY_COUNT = 3         # 连续 N 次相同结果才输出
+CONSISTENCY_COUNT = 2         # 连续 N 次相同结果才输出（折中：松开平滑/去抖以加快触发）
 # 动作冷却：触发一次操作后，这么久内不再响应新操作（避免连续手势疯狂翻页/缩放）
 ACTION_COOLDOWN_MS = 1000
 # "已执行"提示时长（毫秒）：触发动作后右上角短暂提示，之后恢复显示
