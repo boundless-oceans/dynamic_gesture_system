@@ -281,9 +281,20 @@ class DetailPage(BasePage):
             self._vwidget=vw
             lo.addWidget(vw)
         else:
-            lb=QLabel("暂无视频"); lb.setAlignment(Qt.AlignCenter)
-            lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
-            lo.addWidget(lb)
+            # 六个项目里只有两个有介绍视频。不放"暂无视频"空框，
+            # 改用传承人配图充位——保持原有三栏布局不变，同时不浪费这块面积。
+            p=_PA.portrait_path(self._pi)
+            if p and os.path.exists(p):
+                lo.addWidget(_FitLabel(p, pad=8), stretch=1)
+                cap=QLabel("暂无介绍视频 · 图为传承人风采")
+                cap.setAlignment(Qt.AlignCenter)
+                cap.setFont(QFont("Microsoft YaHei",10))
+                cap.setStyleSheet("background:transparent;color:#888;")
+                lo.addWidget(cap)
+            else:
+                lb=QLabel("暂无视频"); lb.setAlignment(Qt.AlignCenter)
+                lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
+                lo.addWidget(lb)
         return f
     def _im(self):
         f=QFrame(); f.setStyleSheet("background:transparent;"); lo=QVBoxLayout(f); lo.setSpacing(8)

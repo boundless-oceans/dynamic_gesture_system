@@ -1,5 +1,6 @@
 """全局配置"""
 
+import json
 import os
 
 # ---- 项目路径 ----
@@ -75,3 +76,85 @@ MAX_LOCK_MS = 2000
 # ---- 手势标签（IPN-Hand 13 类，对应 assets/gestures.json）----
 # 完整标签码见 gesture_mapper.py 的 IPN_HAND_LABELS
 GESTURE_LABELS: dict = {}
+
+
+# ---- 现场可调参数（设置页滑条）----
+# 这些值在运行期被直接读取（main_window 每次都读 config.X），改完立即生效，不用重启。
+# 只有 SMOOTH_FRAMES 例外（它决定 deque 容量，在识别器构造时固定），故不列入。
+TUNABLE: list = [
+    {"key": "CONFIDENCE_THRESHOLD", "label": "触发置信度门槛",
+     "min": 0.30, "max": 0.95, "decimals": 2,
+     "hint": "低于此值的识别结果不触发任何操作。太低容易误触发，太高会变迟钝。"},
+    {"key": "DISPLAY_CONFIDENCE", "label": "显示置信度门槛",
+     "min": 0.10, "max": 0.80, "decimals": 2,
+     "hint": "悬浮窗显示识别结果所需的最低置信度，低于则显示“无手势”。只影响显示。"},
+    {"key": "CONSISTENCY_COUNT", "label": "去抖次数",
+     "min": 1, "max": 6, "decimals": 0,
+     "hint": "连续 N 次识别出同一动作才触发。调大更稳但更迟钝。"},
+    {"key": "ACTION_COOLDOWN_MS", "label": "动作冷却",
+     "min": 300, "max": 3000, "decimals": 0, "unit": "ms",
+     "hint": "触发一次操作后的静默时间，防止一个手势被连读成多次翻页。"},
+    {"key": "MAX_LOCK_MS", "label": "锁存上限",
+     "min": 500, "max": 5000, "decimals": 0, "unit": "ms",
+     "hint": "同一动作执行后锁定这么久，用户“松手”后才能再做一次。"},
+    {"key": "DISPLAY_HOLD_MS", "label": "显示保持",
+     "min": 0, "max": 3000, "decimals": 0, "unit": "ms",
+     "hint": "手势消失后仍保留显示的时间，避免瞬时动态手势一闪就没。"},
+]
+
+# 本地调参文件：只有点“保存为默认”才会生成，不随版本库分发
+LOCAL_CONFIG_PATH = os.path.join(ROOT_DIR, "config_local.json")
+
+# 记录代码里的默认值（必须在应用本地覆盖之前抓取）
+DEFAULTS: dict = {spec["key"]: globals()[spec["key"]] for spec in TUNABLE}
+
+
+def _apply_local_overrides():
+    """把 config_local.json 覆盖到本模块变量。文件不存在则全部用代码默认值。"""
+    try:
+        with open(LOCAL_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return
+    except Exception as e:
+        print(f"[Config] 读取 {os.path.basename(LOCAL_CONFIG_PATH)} 失败，改用默认值: {e}", flush=True)
+        return
+
+    applied = []
+    for spec in TUNABLE:
+        k = spec["key"]
+        if k not in data:
+            continue
+        try:
+            v = type(DEFAULTS[k])(data[k])       # 按默认值的类型转换，防止文件被改坏
+        except Exception:
+            continue
+        # 夹到合法区间：坏文件不该把参数顶到离谱值而让展台失控
+        v = max(spec["min"], min(spec["max"], v))
+        globals()[k] = v
+        applied.append(f"{k}={v}")
+    if applied:
+        print(f"[Config] 已应用本地调参（{os.path.basename(LOCAL_CONFIG_PATH)}）: "
+              f"{', '.join(applied)}", flush=True)
+
+
+def save_local_overrides() -> str:
+    """把当前可调参数写入 config_local.json，下次启动自动生效。返回文件路径。"""
+    data = {spec["key"]: globals()[spec["key"]] for spec in TUNABLE}
+    with open(LOCAL_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return LOCAL_CONFIG_PATH
+
+
+def reset_to_defaults():
+    """恢复代码默认值，并删除本地调参文件。"""
+    for k, v in DEFAULTS.items():
+        globals()[k] = v
+    try:
+        os.remove(LOCAL_CONFIG_PATH)
+    except FileNotFoundError:
+        pass
+
+
+# 末尾执行：本地覆盖必须等所有变量都定义好之后再生效
+_apply_local_overrides()
