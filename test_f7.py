@@ -38,12 +38,11 @@ def test_direction_mapping():
 
 
 def test_action_mapping():
-    """单击/双击→click，张开两次→palm，放大/缩小→zoom"""
-    assert index_to_control(2) == "click"          # G01 单击
-    assert index_to_control(9) == "click"          # G08 双击
-    assert index_to_control(8) == "palm"           # G07 张开两次
-    assert index_to_control(11) == "zoom_in"       # G10 放大
+    """单击→click，张开两次→zoom_in，缩小→zoom_out，双击→circle(旋转)"""
+    assert index_to_control(2) == "click"          # G01 单击 → 进入详情
+    assert index_to_control(8) == "zoom_in"        # G07 张开两次 → 放大
     assert index_to_control(12) == "zoom_out"      # G11 缩小
+    assert index_to_control(9) == "circle"         # G08 双击 → 旋转
     print("test_action_mapping passed")
 
 
@@ -52,7 +51,8 @@ def test_unmapped():
     assert index_to_control(0) is None   # B0A 单指指向
     assert index_to_control(1) is None   # B0B 双指指向
     assert index_to_control(3) is None   # G02 双指点击
-    assert index_to_control(10) is None  # G09 双指双击
+    assert index_to_control(10) is None  # G09 双指双击（备用，不绑定）
+    assert index_to_control(11) is None  # G10 放大（偏弱，不绑定）
     assert index_to_control(13) is None  # 越界
     assert index_to_control(-1) is None  # 越界
     print("test_unmapped passed")

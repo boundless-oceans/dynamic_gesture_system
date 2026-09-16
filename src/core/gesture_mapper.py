@@ -38,22 +38,21 @@ IPN_LABEL_CN: dict[str, str] = {
 }
 
 # IPN-Hand 标签码 → 控制手势（未列入的手势不触发任何操作）
-# 设计语义：方向抛出≈滑动、单击/双击≈click、张开两次≈手掌(palm)回家、
-# 放大/缩小≈zoom
+# 设计原则：只绑定实测可靠的类；偏弱/易混类(B0A/B0B/G02/G09/G10)不绑定，
+# 被误判也不会产生动作。回首页不再占用手势，改用按钮。
 IPN_TO_CONTROL: dict[str, str] = {
-    # 方向滑动
-    "G03": "swipe_up",
-    "G04": "swipe_down",
-    "G05": "swipe_left",
-    "G06": "swipe_right",
-    # 点击（单击 / 双击均视作 click）
-    "G01": "click",
-    "G08": "click",
-    # 手掌张开（回到首页）
-    "G07": "palm",
-    # 缩放
-    "G10": "zoom_in",
-    "G11": "zoom_out",
+    # 首页导航
+    "G05": "swipe_left",     # 向左抛出 → 上一项
+    "G06": "swipe_right",    # 向右抛出 → 下一项
+    # 详情页滚动
+    "G03": "swipe_up",       # 向上抛出 → 向上滚动
+    "G04": "swipe_down",     # 向下抛出 → 向下滚动
+    # 进入详情
+    "G01": "click",          # 单击
+    # 3D 查看页
+    "G07": "zoom_in",        # 张开两次 → 放大
+    "G11": "zoom_out",       # 缩小
+    "G08": "circle",         # 双击 → 旋转模型
 }
 
 
