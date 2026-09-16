@@ -29,11 +29,9 @@ def test_label_order():
 
 
 def test_direction_mapping():
-    """方向抛出 → 对应滑动"""
-    assert index_to_control(4) == "swipe_up"      # G03 向上抛出
-    assert index_to_control(5) == "swipe_down"    # G04 向下抛出
-    assert index_to_control(6) == "swipe_left"    # G05 向左抛出
-    assert index_to_control(7) == "swipe_right"   # G06 向右抛出
+    """左右抛出 → 对应滑动（镜像导致 G05=用户向右, G06=用户向左）"""
+    assert index_to_control(6) == "swipe_right"   # G05 向右抛出 → 下一项
+    assert index_to_control(7) == "swipe_left"    # G06 向左抛出 → 上一项
     print("test_direction_mapping passed")
 
 
@@ -51,6 +49,8 @@ def test_unmapped():
     assert index_to_control(0) is None   # B0A 单指指向
     assert index_to_control(1) is None   # B0B 双指指向
     assert index_to_control(3) is None   # G02 双指点击
+    assert index_to_control(4) is None   # G03 向上抛出（解绑）
+    assert index_to_control(5) is None   # G04 向下抛出（解绑）
     assert index_to_control(10) is None  # G09 双指双击（备用，不绑定）
     assert index_to_control(11) is None  # G10 放大（偏弱，不绑定）
     assert index_to_control(13) is None  # 越界

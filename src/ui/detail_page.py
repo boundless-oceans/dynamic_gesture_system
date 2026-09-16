@@ -1,10 +1,13 @@
 """详情页"""
-from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
+from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame,QGraphicsDropShadowEffect
 from PySide6.QtCore import Qt,Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont,QColor
 from src.core.project_data import PROJECTS, get_sections
 from src.ui.hover_button import HoverButton
 from src.ui.base_page import BasePage
+
+_BTN_NORMAL="QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}"
+_BTN_SEL="QPushButton{background:rgba(255,255,255,0.92);border:3px solid #ffb300;border-radius:12px;}QPushButton:hover{background:#fff;}"
 
 P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
    {"n":"刘铭传故事","s":[("历史渊源","刘铭传，安徽合肥人，清末淮军名将、台湾首任巡抚。"),("技艺特点","说书戏曲形式融合庐剧唱腔和合肥方言。"),("传承现状","多个社区定期举办故事会，列入市级非遗。")]},
@@ -17,6 +20,8 @@ class DetailPage(BasePage):
     go_home=Signal(); go_viewer=Signal()
     def __init__(self,pi=2):
         super().__init__(); self._pi=pi
+        # 主视图三个按钮的选中状态（手势左/右切换）
+        self._sel=0; self._btns=[]; self._actions=[]
 
         self.setAttribute(Qt.WA_StyledBackground,False)
         lo=QVBoxLayout(self); lo.setContentsMargins(20,20,20,40)
@@ -38,11 +43,42 @@ class DetailPage(BasePage):
         ph.setStyleSheet("background:rgba(255,255,255,0.3);border:2px dashed #aaa;border-radius:16px;font-size:20px;color:#666;")
         l.addWidget(ph,stretch=4)
         bl=QHBoxLayout(); bl.setAlignment(Qt.AlignCenter); bl.setSpacing(30)
-        for tx,sl in [("返回主页",self.go_home.emit),("非遗详情",lambda:self.stack.setCurrentIndex(1)),("交互展示",self.go_viewer.emit)]:
+        self._btns=[]; self._actions=[]
+        specs=[("返回主页",self.go_home.emit),("非遗详情",lambda:self.stack.setCurrentIndex(1)),("交互展示",self.go_viewer.emit)]
+        for i,(tx,sl) in enumerate(specs):
             b=HoverButton(tx); b.setFixedSize(140,50); b.setFont(QFont("Microsoft YaHei",14))
-            b.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}")
-            b.clicked.connect(sl); bl.addWidget(b)
-        l.addLayout(bl,stretch=1); return w
+            b.clicked.connect(lambda _=False, i=i: self._on_btn(i))
+            self._btns.append(b); self._actions.append(sl); bl.addWidget(b)
+        l.addLayout(bl,stretch=1)
+        if self._sel >= len(self._btns): self._sel=0
+        self._apply_sel()
+        return w
+
+    def _on_btn(self,i):
+        self._sel=i; self._apply_sel(); self._actions[i]()
+
+    def select_prev(self):
+        """向左：选中左移一格，最左再向左循环到最右"""
+        if not self._btns: return
+        self._sel=(self._sel-1)%len(self._btns); self._apply_sel()
+
+    def select_next(self):
+        """向右：选中右移一格，最右再向右循环到最左"""
+        if not self._btns: return
+        self._sel=(self._sel+1)%len(self._btns); self._apply_sel()
+
+    def activate_selected(self):
+        """激活当前选中的按钮"""
+        if self._btns: self._actions[self._sel]()
+
+    def _apply_sel(self):
+        for i,b in enumerate(self._btns):
+            if i==self._sel:
+                glow=QGraphicsDropShadowEffect(); glow.setBlurRadius(28)
+                glow.setColor(QColor(255,180,0,230)); glow.setOffset(0,0)
+                b.setGraphicsEffect(glow); b.setStyleSheet(_BTN_SEL)
+            else:
+                b.setGraphicsEffect(None); b.setStyleSheet(_BTN_NORMAL)
     def _d(self):
         w=QWidget(); w.setStyleSheet("background:transparent;"); l=QVBoxLayout(w)
         top=QHBoxLayout(); t=QLabel("庐州非遗"); t.setFont(QFont("STKaiti",28,QFont.Bold))

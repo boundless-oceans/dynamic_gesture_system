@@ -18,7 +18,6 @@ from src import config
 IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4,"map":5}
 
 class MainWindow(QMainWindow):
-    signal_gesture_action=Signal(str)
     def __init__(self):
         super().__init__()
         self.setWindowTitle("非遗动态手势展示系统")
@@ -40,14 +39,13 @@ class MainWindow(QMainWindow):
         h=self.pages["home"]
         h.item_selected.connect(self._go_detail)
         h.go_inheritor.connect(lambda:self.stack.setCurrentIndex(0))
-        h.btn_left.clicked.connect(lambda:self.stack.setCurrentIndex(5))
+        h.go_map.connect(lambda:self.stack.setCurrentIndex(5))
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(lambda:self.stack.setCurrentIndex(3))
         self.pages["viewer"].go_home.connect(lambda:self.stack.setCurrentIndex(2))
         self.pages["settings"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["inheritor"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["map"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
-        self.signal_gesture_action.connect(self._on_gesture_action)
         # 摄像头
         self.cw=CameraWidget(self); self.cw.setFixedSize(320,240); self.cw.show()
         # 推理
@@ -63,11 +61,12 @@ class MainWindow(QMainWindow):
         self.bs.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,1);}")
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
         self._lg=None; self._gc=0
+        self._cooldown_until=0.0   # 动作冷却截止时间(ms)
         # 显示保持状态
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0
     def start(self):
         self.cw.start(self.frame_buffer); self.it.start()
-    def _go_detail(self,i=2):
+    def _go_detail(self,i):
         self.pages["detail"].set_project(i); self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(2)
     def _tc(self):
@@ -102,29 +101,33 @@ class MainWindow(QMainWindow):
         c=index_to_control(gid)
         if c: self._ocg(c)
     def _ocg(self,g):
+        now=time.time()*1000.0
+        # 冷却：触发一次动作后，冷却期内不再响应
+        if now < self._cooldown_until:
+            return
+        # 去抖：连续 N 次相同动作才触发
         if g==self._lg: self._gc+=1
         else: self._lg=g; self._gc=1; return
         if self._gc<config.CONSISTENCY_COUNT: return
         self._gc=0
-        cur=self.stack.currentIndex(); cn={v:k for k,v in IDX.items()}[cur]
-        if g=="palm" and cur!=1: self.stack.setCurrentIndex(1); return
+        self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+        cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
         if cn=="home":
-            if g=="click": self._go_detail()
-            elif g in("swipe_left","swipe_right"): self.signal_gesture_action.emit(g)
+            if g=="click": self._go_detail(self.pages["home"].current_index())
+            elif g=="swipe_left": self.pages["home"]._prev()
+            elif g=="swipe_right": self.pages["home"]._next()
         elif cn=="detail":
-            if g in("swipe_up","swipe_down"): self.signal_gesture_action.emit(g)
+            if g=="swipe_left": self.pages["detail"].select_prev()
+            elif g=="swipe_right": self.pages["detail"].select_next()
+            elif g=="click": self.pages["detail"].activate_selected()
         elif cn=="viewer":
-            if g in("zoom_in","zoom_out","circle"): self.signal_gesture_action.emit(g)
-    def _on_gesture_action(self,a):
-        cur=self.stack.currentIndex()
-        if cur==1:
-            if a=="swipe_left": self.pages["home"]._prev()
-            elif a=="swipe_right": self.pages["home"]._next()
-        elif cur==3:
             v=self.pages["viewer"]
-            if a=="zoom_in": v.zoom_in()
-            elif a=="zoom_out": v.zoom_out()
-            elif a=="circle": v.circle()
+            if g=="zoom_in": v.zoom_in()
+            elif g=="zoom_out": v.zoom_out()
+            elif g=="circle": v.circle()
+        elif cn=="inheritor":
+            # 传承人页只保留向右翻页
+            if g=="swipe_right": self.pages["inheritor"]._next()
     def resizeEvent(self,e):
         super().resizeEvent(e)
         self.cw.setGeometry(self.width()-340,20,320,240); self.cw.raise_()

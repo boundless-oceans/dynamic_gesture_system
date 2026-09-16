@@ -52,8 +52,8 @@ function animate() {
 }
 
 // 手势控制接口
-function zoomIn()  { camera.position.z = Math.max(1.5, camera.position.z - 0.3); }
-function zoomOut() { camera.position.z = Math.min(12, camera.position.z + 0.3); }
+function zoomIn()  { camera.position.z = Math.max(1.5, camera.position.z - 0.6); }
+function zoomOut() { camera.position.z = Math.min(12, camera.position.z + 0.6); }
 function circle()  { object.rotation.y += 0.5; }
 function goHome()  { window.qt.webChannelTransport.send('go_home'); }
 

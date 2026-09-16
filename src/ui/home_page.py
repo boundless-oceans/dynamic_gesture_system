@@ -51,6 +51,7 @@ class _ItemCard(QFrame):
 class HomePage(BasePage):
     item_selected = Signal(int)
     go_inheritor = Signal()
+    go_map = Signal()
 
     def __init__(self):
         super().__init__()
@@ -83,7 +84,6 @@ class HomePage(BasePage):
         br.clicked.connect(self._next); cl.addWidget(br)
         layout.addLayout(cl, stretch=3)
         self._cards[0].set_selected(True)
-        self._cards[0].set_selected(True)
 
         seal=QLabel("非遗\n之宝",self)
         seal.setFixedSize(128,128); seal.setAlignment(Qt.AlignCenter)
@@ -91,9 +91,22 @@ class HomePage(BasePage):
         seal.setStyleSheet("color:white;background:rgba(180,40,40,0.65);border:3px solid rgba(140,30,30,0.6);border-radius:8px;")
         seal.move(24,24)
 
-    def _prev(self): self._current = (self._current - 1) % 6; self._update()
+    def _prev(self):
+        # 向左：选中左移一格；已在最左则进入高德地图
+        if self._current > 0:
+            self._current -= 1; self._update()
+        else:
+            self.go_map.emit()
+
     def _next(self):
-        self.go_inheritor.emit()
+        # 向右：选中右移一格；已在最右则进入非遗传承人
+        if self._current < len(ITEMS) - 1:
+            self._current += 1; self._update()
+        else:
+            self.go_inheritor.emit()
+
+    def current_index(self) -> int:
+        return self._current
     def _on_select(self, i: int): self._current = i; self._update()
     def _on_double(self, i: int): self._current = i; self._update(); self.item_selected.emit(self._current)
     def _update(self):
