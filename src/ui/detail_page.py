@@ -1,8 +1,11 @@
 """详情页"""
+import os
+
 from PySide6.QtWidgets import QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QStackedWidget,QFrame
 from PySide6.QtCore import Qt,Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont,QPixmap
 from src.core.project_data import PROJECTS, get_sections
+from src.core import project_assets as _PA
 from src.ui.hover_button import HoverButton
 from src.ui.base_page import BasePage
 
@@ -109,7 +112,13 @@ class DetailPage(BasePage):
         f=QFrame(); f.setStyleSheet("background:transparent;"); lo=QVBoxLayout(f); lo.setSpacing(8)
         lo.setContentsMargins(0,0,0,0)
         for i in range(3):
-            im=QLabel(f"图片 {i+1}"); im.setAlignment(Qt.AlignCenter); im.setMinimumHeight(96)
-            im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px dashed #aaa;border-radius:6px;font-size:14px;color:#888;")
+            im=QLabel(); im.setAlignment(Qt.AlignCenter); im.setMinimumHeight(96)
+            path = _PA.detail_path(self._pi, i+1)
+            if os.path.exists(path):
+                im.setPixmap(QPixmap(path).scaled(260,150,Qt.KeepAspectRatio,Qt.SmoothTransformation))
+                im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
+            else:
+                im.setText(f"图片 {i+1}")
+                im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px dashed #aaa;border-radius:6px;font-size:14px;color:#888;")
             lo.addWidget(im,stretch=1)
         return f

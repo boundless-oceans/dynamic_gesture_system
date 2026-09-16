@@ -11,3 +11,16 @@ venv/
 # Claude Code 本地配置（个人权限等，不进版本库）
 # 如需共享 .claude/settings.json 或 agents，用 git add -f 强制添加
 .claude/
+
+
+# 3D 模型产物（由 tools/fbx_to_glb.py 从原始素材生成，体积大，不进版本库）
+assets/models/
+
+# 打包/构建产物（将来 PyInstaller 用）
+build/
+dist/
+*.spec
+
+# Blender 备份
+*.blend1
+

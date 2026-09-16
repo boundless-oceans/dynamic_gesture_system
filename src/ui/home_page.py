@@ -1,13 +1,16 @@
 """首页"""
 
+import os
+
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont, QColor, QPixmap
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 
 from src.ui.base_page import BasePage
 
 from src.core.project_data import get_names as _get_names
+from src.core import project_assets as _PA
 ITEMS = _get_names()
 _FROSTED = "QFrame { background: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.5); border-radius: 16px; } QFrame:hover { background: rgba(255,255,255,0.55); border: 2px solid #ff9900; }"
 
@@ -29,12 +32,21 @@ class _ItemCard(QFrame):
         img.setAlignment(Qt.AlignCenter)
         img.setFixedHeight(200)
         img.setStyleSheet("background: rgba(255,255,255,0.3); border-radius: 10px;")
+        self._img = img
+        self._load_image(index)
         layout.addWidget(img)
         nl = QLabel(name)
         nl.setAlignment(Qt.AlignCenter)
         nl.setFont(QFont("Microsoft YaHei", 14, QFont.Bold))
         nl.setStyleSheet("background: transparent; border: none;")
         layout.addWidget(nl)
+
+    def _load_image(self, index: int):
+        """加载项目卡片图 assets/images/<slug>/thumb.jpg"""
+        path = _PA.thumb_path(index)
+        if path and os.path.exists(path):
+            pm = QPixmap(path).scaled(144, 200, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self._img.setPixmap(pm)
 
     def mousePressEvent(self, e): self.clicked.emit(self.index)
     def mouseDoubleClickEvent(self, e): self.double_clicked.emit(self.index)
