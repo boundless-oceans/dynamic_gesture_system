@@ -6,6 +6,7 @@ from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
 from src.core.gesture_mapper import index_to_control, CONTROL_CN
+from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
 from src.ui.detail_page import DetailPage
@@ -50,7 +51,7 @@ class MainWindow(QMainWindow):
         h.go_inheritor.connect(self._enter_inheritor)
         h.go_map.connect(lambda:self.stack.setCurrentIndex(5))
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
-        self.pages["detail"].go_viewer.connect(lambda:self.stack.setCurrentIndex(3))
+        self.pages["detail"].go_viewer.connect(self._go_viewer)
         self.pages["viewer"].go_home.connect(lambda:self.stack.setCurrentIndex(2))
         self.pages["settings"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["inheritor"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
@@ -77,6 +78,11 @@ class MainWindow(QMainWindow):
     def _go_detail(self,i):
         self.pages["detail"].set_project(i); self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(2)
+    def _go_viewer(self):
+        # 进入 3D 页时加载当前项目的模型
+        slug = project_assets.slug_of(self.pages["detail"]._pi)
+        self.pages["viewer"].load_model(slug)
+        self.stack.setCurrentIndex(3)
     def _enter_inheritor(self):
         # 进入传承人页时默认选中"向下"按钮
         p=self.pages["inheritor"]; p._sel=0; p._apply_sel()

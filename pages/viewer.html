@@ -17,47 +17,86 @@
 <div id="container"></div>
 <div id="loading">加载中...</div>
 
-
-<script src=three.min.js></script>
+<script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
 <script>
-let scene, camera, renderer, object;
+let scene, camera, renderer, object = null, spin = true;
 
 function init() {
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 100);
-    camera.position.z = 5;
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 5);
 
     renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
     document.getElementById('container').appendChild(renderer.domElement);
 
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(1, 1, 1);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
-
-    const geo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
-    const mat = new THREE.MeshStandardMaterial({color: 0x3399ff, roughness: 0.2, metalness: 0.3});
-    object = new THREE.Mesh(geo, mat);
-    scene.add(object);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.1));
+    const d1 = new THREE.DirectionalLight(0xffffff, 1.1); d1.position.set(1, 1, 1);  scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0xffffff, 0.5); d2.position.set(-1, -0.6, -1); scene.add(d2);
 
     document.getElementById('loading').style.display = 'none';
     animate();
 }
 
+// 把模型居中并按包围盒自动设置相机距离
+function fitCameraToObject(obj, offset) {
+    offset = offset || 1.5;
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    obj.position.sub(center);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const fov = camera.fov * Math.PI / 180;
+    const dist = (maxDim / 2) / Math.tan(fov / 2) * offset;
+    camera.position.set(0, 0, dist);
+    camera.near = Math.max(dist / 100, 0.01);
+    camera.far = dist * 100;
+    camera.updateProjectionMatrix();
+    camera.lookAt(0, 0, 0);
+}
+
+const loader = new THREE.GLTFLoader();
+
+// Python 侧调用：loadModel('hulu') 等（模型位于 ../assets/models/<name>.glb）
+function loadModel(name) {
+    const tip = document.getElementById('loading');
+    if (!name) { return; }
+    tip.textContent = '加载中...';
+    tip.style.display = 'block';
+    if (object) {
+        scene.remove(object);
+        object.traverse(function (o) { if (o.geometry) o.geometry.dispose(); });
+        object = null;
+    }
+    loader.load('../assets/models/' + name + '.glb',
+        function (gltf) {
+            object = gltf.scene;
+            scene.add(object);
+            fitCameraToObject(object);
+            tip.style.display = 'none';
+        },
+        undefined,
+        function (err) {
+            console.error(err);
+            tip.textContent = '模型加载失败：' + name;
+        });
+}
+
 function animate() {
     requestAnimationFrame(animate);
-    object.rotation.y += 0.003;
+    if (object && spin) { object.rotation.y += 0.004; }
     renderer.render(scene, camera);
 }
 
 // 手势控制接口
-function zoomIn()  { camera.position.z = Math.max(1.5, camera.position.z - 0.6); }
-function zoomOut() { camera.position.z = Math.min(12, camera.position.z + 0.6); }
-function circle()  { object.rotation.y += 0.5; }
+function zoomIn()  { camera.position.z = Math.max(camera.position.z * 0.75, 0.5); }
+function zoomOut() { camera.position.z = Math.min(camera.position.z * 1.33, 200); }
+function circle()  { if (object) object.rotation.y += 0.5; }
 function goHome()  { window.qt.webChannelTransport.send('go_home'); }
 
-window.onresize = () => {
+window.onresize = function () {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);

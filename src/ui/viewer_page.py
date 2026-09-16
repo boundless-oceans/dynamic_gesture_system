@@ -16,12 +16,14 @@ class ViewerPage(QWidget):
 
     def __init__(self):
         super().__init__()
+        self._slug = None            # 当前加载的模型 slug
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.web = QWebEngineView()
         html_path = os.path.join(os.path.dirname(__file__), "../../pages/viewer.html")
         self.web.load(QUrl.fromLocalFile(os.path.abspath(html_path)))
+        self.web.loadFinished.connect(self._on_loaded)
         layout.addWidget(self.web)
 
         # 右下角返回按钮（覆盖在网页上）
@@ -35,6 +37,21 @@ class ViewerPage(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.btn_back.move(self.width() - 80, self.height() - 80)
+
+    def _on_loaded(self, ok):
+        if ok:
+            self._apply_model()
+
+    def _apply_model(self):
+        if self._slug:
+            self.web.page().runJavaScript("loadModel('%s')" % self._slug)
+
+    def load_model(self, slug: str):
+        """按项目 slug 加载 ../assets/models/<slug>.glb"""
+        if not slug:
+            return
+        self._slug = slug
+        self._apply_model()
 
     def zoom_in(self):
         self.web.page().runJavaScript("zoomIn()")
