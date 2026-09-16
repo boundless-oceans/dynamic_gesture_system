@@ -31,6 +31,15 @@ class MainWindow(QMainWindow):
         }
         for p in self.pages.values(): self.stack.addWidget(p)
         self.stack.setCurrentIndex(1)
+        # 手势状态（必须在 currentChanged 连接之前初始化）
+        self._lg=None; self._gc=0
+        self._cooldown_until=0.0   # 动作冷却截止时间(ms)
+        self._locks={}             # 已触发且未"松手"的动作 → 触发时间(ms)，超时自动解锁
+        self._toast_until=0.0      # "已执行"提示截止时间(ms)
+        self._toast_text=""
+        self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
+        # 换页：清锁 + 重置去抖，避免带着上一页的锁
+        self.stack.currentChanged.connect(self._on_page_changed)
         central=QWidget(); central.setStyleSheet("background:transparent;")
         self.stack.setStyleSheet("background:transparent;")
         lo=QVBoxLayout(central); lo.setContentsMargins(0,0,0,0); lo.addWidget(self.stack)
@@ -60,13 +69,9 @@ class MainWindow(QMainWindow):
         self.bs.setFont(QFont("Microsoft YaHei",9))
         self.bs.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,1);}")
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
-        self._lg=None; self._gc=0
-        self._cooldown_until=0.0   # 动作冷却截止时间(ms)
-        self._locks=set()          # 已触发且未"松手"的动作（防重复触发）
-        self._toast_until=0.0      # "已执行"提示截止时间(ms)
-        self._toast_text=""
-        # 显示保持状态
-        self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0
+    def _on_page_changed(self, idx):
+        # 换页：清锁 + 重置去抖（要求在新页面重新做手势），避免带着上一页的锁
+        self._locks.clear(); self._lg=None; self._gc=0
     def start(self):
         self.cw.start(self.frame_buffer); self.it.start()
     def _go_detail(self,i):
@@ -125,11 +130,13 @@ class MainWindow(QMainWindow):
         if g==self._lg: self._gc+=1
         else: self._lg=g; self._gc=1; return
         if self._gc<config.CONSISTENCY_COUNT: return
-        self._gc=0
         # 锁存：该动作已执行且用户尚未松手 → 不重复触发
-        if g in self._locks:
+        # 超过 MAX_LOCK_MS 自动解锁，防止"松手后立刻重做同一手势"一直锁定
+        t_lock = self._locks.get(g)
+        if t_lock is not None and (now - t_lock) < config.MAX_LOCK_MS:
             return
-        self._locks.add(g)
+        self._gc=0
+        self._locks[g] = now
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
         # "已执行"提示（立即显示，约 0.8s 后恢复）
         self._toast_until = now + config.TOAST_MS

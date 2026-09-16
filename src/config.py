@@ -62,9 +62,11 @@ FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
 # ---- 去抖 ----
 CONSISTENCY_COUNT = 2         # 连续 N 次相同结果才输出（折中：松开平滑/去抖以加快触发）
 # 动作冷却：触发一次操作后，这么久内不再响应新操作（避免连续手势疯狂翻页/缩放）
-ACTION_COOLDOWN_MS = 1000
+ACTION_COOLDOWN_MS = 800
 # "已执行"提示时长（毫秒）：触发动作后右上角短暂提示，之后恢复显示
 TOAST_MS = 800
+# 锁存最长时长（毫秒）：超过则自动解锁，防止"松手后立刻重做同一手势"导致一直锁定
+MAX_LOCK_MS = 2000
 
 # ---- 手势标签（IPN-Hand 13 类，对应 assets/gestures.json）----
 # 完整标签码见 gesture_mapper.py 的 IPN_HAND_LABELS
