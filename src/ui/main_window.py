@@ -179,6 +179,7 @@ class MainWindow(QMainWindow):
             if g=="swipe_left": p.seek_back()            # 左/右 = 视频快退/快进
             elif g=="swipe_right": p.seek_forward()
             elif g=="swipe_down": p.next_person()        # 向下抛出 = 下一位
+            elif g=="swipe_up": p.prev_person()          # 向上抛出 = 上一位
             elif g=="click": p.confirm()                 # 点击 = 返回
         elif cn=="map":
             p=self.pages["map"]

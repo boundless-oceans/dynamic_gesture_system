@@ -45,15 +45,7 @@ class InheritorPage(BasePage):
         title.setStyleSheet("background: transparent;")
         layout.addWidget(title)
 
-        top_row = QHBoxLayout()
-        btn_up = QPushButton("\u2191")
-        btn_up.setFixedSize(50, 50)
-        btn_up.setFont(QFont("Arial", 20))
-        btn_up.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
-        btn_up.clicked.connect(self._prev)
-        top_row.addWidget(btn_up)
-        top_row.addStretch()            # \u2191 \u5de6\u5bf9\u9f50\uff1a\u907f\u5f00\u53f3\u4e0a\u89d2\u6444\u50cf\u5934\u60ac\u6d6e\u7a97
-        layout.addLayout(top_row)
+        # \u4e0a/\u4e0b\u4e00\u4f4d\u6309\u94ae\u7edf\u4e00\u653e\u5728\u53f3\u4e0b\u89d2\uff08\u907f\u5f00\u53f3\u4e0a\u89d2\u6444\u50cf\u5934\u60ac\u6d6e\u7a97\uff09
 
         # 主体：左侧文字 + 右侧视频
         content = QHBoxLayout()
@@ -96,7 +88,7 @@ class InheritorPage(BasePage):
         # 若仍有少量重叠，摄像头在最上层（内容不会盖住画面）
         right_col = QVBoxLayout()
         right_col.setContentsMargins(0, 0, 0, 0)
-        right_col.addSpacing(115)          # 视频高度约为原来的 5/4
+        right_col.addSpacing(160)          # 让开右上角摄像头悬浮窗(高240)，避免遮挡
         right_col.addWidget(video_frame)
         content.addLayout(right_col, stretch=2)
 
@@ -104,6 +96,13 @@ class InheritorPage(BasePage):
 
         bottom_row = QHBoxLayout()
         bottom_row.addStretch()
+        btn_up = QPushButton("\u2191")
+        btn_up.setFixedSize(50, 50)
+        btn_up.setFont(QFont("Arial", 20))
+        btn_up.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
+        btn_up.clicked.connect(self._prev)
+        bottom_row.addWidget(btn_up)
+        bottom_row.addSpacing(10)
         btn_down = QPushButton("\u2193")
         btn_down.setFixedSize(50, 50)
         btn_down.setFont(QFont("Arial", 20))
@@ -134,6 +133,10 @@ class InheritorPage(BasePage):
     def next_person(self):
         """向下抛出：下一位传承人"""
         self._next()
+
+    def prev_person(self):
+        """向上抛出：上一位传承人"""
+        self._prev()
 
     def seek(self, delta_ms):
         """左/右抛出：视频快退/快进"""
