@@ -4,11 +4,13 @@ import json
 import os
 
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
-from PySide6.QtGui import QImage, QPixmap, QFont
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QPen, QColor
+from PySide6.QtCore import Qt, QTimer, QRectF
 
 from src.core.camera import CameraThread
 from src.core.frame_buffer import FrameBuffer
+from src.core.inference import model_view_rect
+from src import config
 
 
 def _load_labels():
@@ -92,6 +94,33 @@ class CameraWidget(QWidget):
     def _on_frame_ready(self):
         pass
 
+    def _draw_zone(self, pixmap: QPixmap, frame_w: int, frame_h: int) -> QPixmap:
+        """在预览上画出模型能看到的范围（手势交互区）
+
+        模型只处理画面中央一块，四周看不到。把范围明示出来，访客就知道该站
+        哪里、手该伸到哪儿；也能减少"画面里几个人各做各的"造成的互相干扰。
+        框的位置由 model_view_rect 从预处理参数算出来，不写死。
+        """
+        if not config.CAMERA_SHOW_ZONE or frame_w <= 0 or frame_h <= 0:
+            return pixmap
+        zx, zy, zw, zh = model_view_rect(frame_w, frame_h)
+        sx = pixmap.width() / float(frame_w)
+        sy = pixmap.height() / float(frame_h)
+        rect = QRectF(zx * sx, zy * sy, zw * sx, zh * sy)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor(255, 179, 0, 210), 2, Qt.DashLine))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(rect)
+        # 标语贴在框内顶部，避免压住画面主体
+        painter.setPen(QPen(QColor(255, 179, 0, 235)))
+        painter.setFont(QFont("Microsoft YaHei", 8, QFont.Bold))
+        painter.drawText(rect.adjusted(4, 2, -4, 0),
+                         Qt.AlignTop | Qt.AlignHCenter, "手势交互区 · 请将手伸入")
+        painter.end()
+        return pixmap
+
     def _update_frame(self):
         if self._camera_thread is None:
             return
@@ -110,6 +139,6 @@ class CameraWidget(QWidget):
             self._label.width(), self._label.height(),
             Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
-        self._label.setPixmap(pixmap)
+        self._label.setPixmap(self._draw_zone(pixmap, w, h))
         self._gesture_text.raise_()
         self._conf_text.raise_()

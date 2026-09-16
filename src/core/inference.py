@@ -15,6 +15,25 @@ from src.model.transforms import GroupScale, GroupCenterCrop, Stack, ToTorchForm
 from src import config
 
 
+def model_view_rect(frame_w: int, frame_h: int) -> tuple:
+    """模型实际能看到画面的哪一块，返回原图坐标 (x, y, w, h)。
+
+    ⚠ 必须与 GestureRecognizer._build_transform 里的预处理一一对应：
+      GroupScale(SCALE_SIZE)      —— torchvision.Resize，把**短边**缩到 SCALE_SIZE
+      GroupCenterCrop(INPUT_SIZE) —— 再取中心 INPUT_SIZE 见方
+    所以模型看不到画面四周。实测 640x480 下约等于中央 420x420（x:109~530, y:29~450）。
+    改了预处理参数就必须同步这里，否则预览上的交互区框会画偏。
+    （tests/test_interaction_zone.py 用真实预处理管线校验了这层对应关系。）
+    """
+    short = min(frame_w, frame_h)
+    if short <= 0:
+        return (0.0, 0.0, float(frame_w), float(frame_h))
+    k = config.SCALE_SIZE / float(short)          # 短边缩放比
+    w = min(float(frame_w), config.INPUT_SIZE / k)
+    h = min(float(frame_h), config.INPUT_SIZE / k)
+    return ((frame_w - w) / 2.0, (frame_h - h) / 2.0, w, h)
+
+
 class GestureRecognizer:
     """DSTE-Net 手势识别器"""
 

@@ -58,6 +58,11 @@ CAMERA_ENHANCE_PREVIEW = True
 # IPN-Hand 训练数据以右利手为主；若右手准、左手不准，
 # 可改成 False（喂不镜像帧）再对比左右手表现。
 CAMERA_MIRROR_FEED = True
+# 预览画面上是否画出"手势交互区"提示框。
+# 模型只处理画面中央一块（见 inference.model_view_rect），四周根本看不到。
+# 把这个范围画出来，访客就知道该站哪里、手该伸到哪儿，也顺带减少
+# "画面里好几个人各做各的"带来的混乱。嫌乱可以关掉。
+CAMERA_SHOW_ZONE = True
 
 # ---- 帧缓冲 ----
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
