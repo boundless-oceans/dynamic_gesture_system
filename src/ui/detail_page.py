@@ -9,6 +9,7 @@ from src.ui.base_page import BasePage
 # 选中用金色边框表示；不改动 HoverButton 原本的浮动阴影
 _BTN_NORMAL="QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:10px;}QPushButton:hover{background:rgba(255,255,255,0.85);}"
 _BTN_SEL="QPushButton{background:rgba(255,255,255,0.92);border:3px solid #ffb300;border-radius:12px;}QPushButton:hover{background:#fff;}"
+_BACK_SEL="QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:30px;}QPushButton:hover{background:#fff;}"
 
 P=[{"n":"葫芦雕刻","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
    {"n":"刘铭传故事","s":[("历史渊源","刘铭传，安徽合肥人，清末淮军名将、台湾首任巡抚。"),("技艺特点","说书戏曲形式融合庐剧唱腔和合肥方言。"),("传承现状","多个社区定期举办故事会，列入市级非遗。")]},
@@ -59,17 +60,19 @@ class DetailPage(BasePage):
         self._sel=i; self._apply_sel(); self._actions[i]()
 
     def select_prev(self):
-        """向左：选中左移一格，最左再向左循环到最右"""
-        if not self._btns: return
+        """向左：选中左移一格，最左再向左循环到最右（非遗详情子页只有返回键，不切换）"""
+        if self.stack.currentIndex()==1 or not self._btns: return
         self._sel=(self._sel-1)%len(self._btns); self._apply_sel()
 
     def select_next(self):
-        """向右：选中右移一格，最右再向右循环到最左"""
-        if not self._btns: return
+        """向右：选中右移一格，最右再向右循环到最左（非遗详情子页只有返回键，不切换）"""
+        if self.stack.currentIndex()==1 or not self._btns: return
         self._sel=(self._sel+1)%len(self._btns); self._apply_sel()
 
     def activate_selected(self):
-        """激活当前选中的按钮"""
+        """确认：非遗详情子页=返回主视图；主视图=激活选中按钮"""
+        if self.stack.currentIndex()==1:
+            self.stack.setCurrentIndex(0); return
         if self._btns: self._actions[self._sel]()
 
     def _apply_sel(self):
@@ -86,7 +89,8 @@ class DetailPage(BasePage):
         l.addLayout(c,stretch=10)
         bottom=QHBoxLayout(); bottom.addStretch()
         btn=QPushButton("\u21A9",w); btn.setFixedSize(60,60); btn.setFont(QFont("Arial",24))
-        btn.setStyleSheet("QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:30px;}QPushButton:hover{background:rgba(255,255,255,0.9);}")
+        # \u975E\u9057\u8BE6\u60C5\u5B50\u9875\uFF1A\u8FD4\u56DE\u952E\u9ED8\u8BA4\u9009\u4E2D\uFF08\u91D1\u8FB9\uFF09\uFF0C\u70B9\u51FB/\u786E\u8BA4=\u8FD4\u56DE\u4E3B\u89C6\u56FE
+        btn.setStyleSheet(_BACK_SEL)
         btn.clicked.connect(lambda:self.stack.setCurrentIndex(0))
         bottom.addWidget(btn); l.addLayout(bottom)
         return w

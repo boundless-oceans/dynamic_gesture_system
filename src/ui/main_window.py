@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
             if g=="zoom_in": v.zoom_in()
             elif g=="zoom_out": v.zoom_out()
             elif g=="circle": v.circle()
+            elif g=="click": v.activate_selected()   # 确认"返回"
         elif cn=="inheritor":
             p=self.pages["inheritor"]
             if g=="swipe_left": p.select_prev()          # 左/右切换选中[向下,返回]

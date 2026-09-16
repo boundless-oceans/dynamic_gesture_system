@@ -6,6 +6,8 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtGui import QFont
 
+_BACK_SEL = "QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:30px;}QPushButton:hover{background:#fff;}"
+
 
 class ViewerPage(QWidget):
     """Three.js 3D 模型交互查看"""
@@ -26,13 +28,8 @@ class ViewerPage(QWidget):
         self.btn_back = QPushButton("\u21A9", self)
         self.btn_back.setFixedSize(60, 60)
         self.btn_back.setFont(QFont("Arial", 24))
-        self.btn_back.setStyleSheet("""
-            QPushButton {
-                background: white; border: none; border-radius: 30px;
-                
-            }
-            QPushButton:hover { background: #f0f0f0; }
-        """)
+        # 3D \u9875\uFF1A\u8FD4\u56DE\u952E\u9ED8\u8BA4\u9009\u4E2D\uFF08\u91D1\u8FB9\uFF09\uFF0C\u70B9\u51FB/\u786E\u8BA4=\u8FD4\u56DE
+        self.btn_back.setStyleSheet(_BACK_SEL)
         self.btn_back.clicked.connect(self.go_home.emit)
 
     def resizeEvent(self, event):
@@ -47,3 +44,13 @@ class ViewerPage(QWidget):
 
     def circle(self):
         self.web.page().runJavaScript("circle()")
+
+    # 唯一可选项=返回键（默认选中）
+    def select_prev(self):
+        pass
+
+    def select_next(self):
+        pass
+
+    def activate_selected(self):
+        self.go_home.emit()
