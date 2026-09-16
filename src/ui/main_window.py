@@ -84,13 +84,14 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        if dc >= config.DISPLAY_CONFIDENCE:
-            # 置信足够：立即更新，并记录时间
+        cur=self._disp_label
+        # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
+        if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
             self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
             self.cw.set_confidence(str(dg), dc)
-        elif self._disp_label is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
-            # 瞬时动态手势结束后：短暂保留上一次结果，不立刻变"无手势"
-            self.cw.set_confidence(self._disp_label, self._disp_conf)
+        elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
+            # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
+            self.cw.set_confidence(cur, self._disp_conf)
         else:
             self._disp_label=None
             self.cw.set_confidence(None, dc)

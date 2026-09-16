@@ -26,7 +26,10 @@ CONFIDENCE_THRESHOLD = 0.6
 # 显示门槛：悬浮窗显示识别名所需的最低置信度（更低显示"无手势"）
 DISPLAY_CONFIDENCE = 0.35
 # 显示保持：高置信手势消失后，仍保留显示这么久（毫秒），避免瞬时动态手势一闪就没
-DISPLAY_HOLD_MS = 800
+DISPLAY_HOLD_MS = 1000
+# 显示切换门槛：想"抢走"当前显示改成另一个手势，新结果置信度需达到这个值；
+# 否则保持当前显示（避免动作结束后被一个中等置信的错误类抢走）
+DISPLAY_SWITCH_CONFIDENCE = 0.6
 
 # ---- 图像预处理 ----
 INPUT_SIZE = 224              # 送入网络尺寸
