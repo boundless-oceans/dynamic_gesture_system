@@ -44,7 +44,9 @@ INPUT_MEAN = [0.485, 0.456, 0.406]
 INPUT_STD = [0.229, 0.224, 0.225]
 
 # ---- 摄像头 ----
-CAMERA_INDEX = 0              # 0=默认摄像头
+CAMERA_INDEX = 0              # 手动指定时的摄像头索引（CAMERA_AUTO_SELECT=False 时生效）
+# 自动选择摄像头：优先外接（通常索引 1+），没有外接时用自带（索引 0）
+CAMERA_AUTO_SELECT = True
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAMERA_FPS = 30               # 采集帧率

@@ -1,10 +1,68 @@
 """摄像头采集线程"""
 
+import os
+
 import cv2
 import numpy as np
 from PySide6.QtCore import QThread, Signal, QMutex
 
 from src import config
+
+
+def _probe(idx: int) -> bool:
+    """探测某个索引的摄像头是否可用（能打开并读到一帧）"""
+    cap = None
+    try:
+        cap = cv2.VideoCapture(idx)
+        if not cap.isOpened():
+            return False
+        ok, _ = cap.read()
+        return bool(ok)
+    except Exception:
+        return False
+    finally:
+        if cap is not None:
+            cap.release()
+
+
+def pick_camera_index(max_idx: int = 5) -> int:
+    """选择摄像头索引：优先外接（非 0 号），没有外接则用自带（0 号）。"""
+    if not config.CAMERA_AUTO_SELECT:
+        return config.CAMERA_INDEX
+    # 枚举期间静音 OpenCV 日志 + 底层 stderr（无效索引会刷 ERROR）
+    prev_level = None
+    saved_fd = None
+    try:
+        prev_level = cv2.getLogLevel()
+        cv2.setLogLevel(0)  # SILENT
+    except Exception:
+        prev_level = None
+    try:
+        saved_fd = os.dup(2)
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, 2)
+    except Exception:
+        saved_fd = None
+    try:
+        found = [i for i in range(max_idx) if _probe(i)]
+    finally:
+        if saved_fd is not None:
+            try:
+                os.dup2(saved_fd, 2); os.close(saved_fd)
+            except Exception:
+                pass
+        if prev_level is not None:
+            try: cv2.setLogLevel(prev_level)
+            except Exception: pass
+
+    if not found:
+        print("[Camera] 未探测到可用摄像头，回退 CAMERA_INDEX =", config.CAMERA_INDEX)
+        return config.CAMERA_INDEX
+    external = [i for i in found if i != 0]
+    chosen = external[0] if external else found[0]
+    print(f"[Camera] 可用索引 {found} → 选用 {chosen} "
+          f"({'外接' if chosen != 0 else '自带'})")
+    return chosen
 
 
 class CameraThread(QThread):
@@ -19,7 +77,8 @@ class CameraThread(QThread):
         self._running = False
 
     def run(self):
-        self.cap = cv2.VideoCapture(config.CAMERA_INDEX)
+        idx = pick_camera_index()
+        self.cap = cv2.VideoCapture(idx)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
         self._running = True
