@@ -1,13 +1,6 @@
 # 非遗动态手势展示系统（DSTE-Net）
 
-![Python](docs/badges/python.svg)
-![PySide6](docs/badges/pyside6.svg)
-![PyTorch](docs/badges/pytorch.svg)
-![OpenCV](docs/badges/opencv.svg)
-![Platform](docs/badges/platform.svg)
-![Model](docs/badges/model.svg)
-![Tests](docs/badges/tests.svg)
-![License](docs/badges/license.svg)
+![Python](docs/badges/python.svg) ![PySide6](docs/badges/pyside6.svg) ![PyTorch](docs/badges/pytorch.svg) ![OpenCV](docs/badges/opencv.svg) ![Platform](docs/badges/platform.svg) ![Model](docs/badges/model.svg) ![Tests](docs/badges/tests.svg) ![License](docs/badges/license.svg)
 
 > 徽章是 shields.io 的**本地副本**（`docs/badges/`），不直接引用远程 URL——
 > 编辑器预览对远程内容有安全限制、或断网时会加载不出来。
@@ -146,7 +139,9 @@ dynamic_gesture_system/
 │   ├── model/                  DSTE-Net 网络定义（temporal_module 等）
 │   └── ui/                     各页面（首页/详情/3D/传承人/地图/设置）+ 摄像头悬浮窗
 ├── pages/                      viewer.html（3D）、map.html（地图）、three.js / Leaflet
-├── docs/badges/                README 顶部徽章的本地副本（由脚本生成，见下）
+├── docs/
+│   ├── UI_DESIGN.md            布局比例约定（只记"摆在哪、多大"，过时处已标注）
+│   └── badges/                 README 顶部徽章的本地副本（由脚本生成，见下）
 ├── assets/
 │   ├── projects.json           6 个非遗项目（名称/级别/类别/传承人/简介/介绍）
 │   ├── inheritors.json         传承人页数据（姓名/项目/简介/视频/照片）

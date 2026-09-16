@@ -8,7 +8,9 @@ IPN-Hand 13 类（索引 0~12，取官方 id 顺序，排除 D0X 无手势类）
     G10 放大       G11 缩小
 """
 
-# 13 种控制手势（对应 DESIGN.md 中的手势映射表）
+# 控制动作的取值集合（哪些控制手势是合法的）
+# 注：这里只是合法值清单，**不是**"哪个手势映射到哪个动作"——那张表在下面的
+# IPN_TO_CONTROL，各页面怎么响应的真值在 main_window.MainWindow._ocg。
 CONTROL_GESTURES = {
     "swipe_left",
     "swipe_right",
