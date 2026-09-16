@@ -142,9 +142,9 @@ class InheritorPage(BasePage):
         self._load_pic()
 
     def _load_pic(self):
-        """按传承人序号加载对应项目的图片（顺序与 assets/projects.json 一致）
-        用卡片图 thumb.jpg：详情图多为视频截图（带水印/字幕），不适合展示"""
-        path = _PA.thumb_path(self._index)
+        """按传承人序号加载对应项目的配图（顺序与 assets/projects.json 一致）
+        用 portrait.jpg（与首页卡片图不同，避免重复）；缺失时回退卡片图"""
+        path = _PA.portrait_path(self._index)
         if path and os.path.exists(path):
             self._pic.setPixmap(QPixmap(path).scaled(
                 560, 420, Qt.KeepAspectRatio, Qt.SmoothTransformation))

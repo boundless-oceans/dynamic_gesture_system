@@ -8,6 +8,7 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 IMAGES_DIR = os.path.join(ROOT, "assets", "images")
 MODELS_DIR = os.path.join(ROOT, "assets", "models")
+VIDEOS_DIR = os.path.join(ROOT, "assets", "videos")
 
 SLUGS = ["hulu", "liumingchuan", "baogong", "luju", "huobihua", "wushantiezi"]
 
@@ -29,7 +30,25 @@ def detail_path(index: int, i: int) -> str:
     return os.path.join(IMAGES_DIR, s, f"{i}.jpg") if s else ""
 
 
+def portrait_path(index: int) -> str:
+    """传承人页配图路径（与首页卡片图不同）；不存在时回退到卡片图"""
+    s = slug_of(index)
+    if not s:
+        return ""
+    p = os.path.join(IMAGES_DIR, s, "portrait.jpg")
+    return p if os.path.exists(p) else thumb_path(index)
+
+
 def model_path(index: int) -> str:
     """3D 模型（.glb）路径"""
     s = slug_of(index)
     return os.path.join(MODELS_DIR, f"{s}.glb") if s else ""
+
+
+def video_path(index: int) -> str:
+    """介绍视频路径（.mp4）；不存在时返回空串"""
+    s = slug_of(index)
+    if not s:
+        return ""
+    p = os.path.join(VIDEOS_DIR, f"{s}.mp4")
+    return p if os.path.exists(p) else ""
