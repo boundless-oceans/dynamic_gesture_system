@@ -11,6 +11,7 @@ from PIL import Image
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_ROOT = os.path.join(REPO, "assets", "images")
+QR_DIR = r"F:\非遗资料\文化馆一期资料\h5二维码\十个二维码"
 
 # 素材来源（本机）
 MAT = r"F:\非遗资料"
@@ -102,6 +103,30 @@ PORTRAITS = {
 }
 
 
+# 项目二维码（扫一扫了解详情）；火笔画、吴山铁字暂无对应二维码
+QRS = {
+    "hulu": "葫芦雕刻.png",
+    "liumingchuan": "刘铭传故事.png",
+    "baogong": "包公故事.png",
+    "luju": "庐剧.png",
+}
+
+
+def copy_qrs():
+    """把二维码原样拷到 assets/images/<slug>/qr.png"""
+    print("\n[二维码]")
+    for slug, fn in QRS.items():
+        src = os.path.join(QR_DIR, fn)
+        if not os.path.exists(src):
+            print(f"  ✗ {slug}: 源缺失 {src}")
+            continue
+        dst = os.path.join(OUT_ROOT, slug, "qr.png")
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        with Image.open(src) as im:
+            im.save(dst, "PNG")          # 保持清晰，不缩放
+        print(f"  ✓ {slug}/qr.png  {im.size}  <- {fn}")
+
+
 def _load_rgb(src: str) -> Image.Image:
     im = Image.open(src)
     if im.mode in ("RGBA", "LA") or (im.mode == "P" and "transparency" in im.info):
@@ -162,6 +187,7 @@ def main():
             if ps:
                 size, n = convert(ps, os.path.join(out_dir, "portrait.jpg"), THUMB, crop)
                 print(f"  ✓ portrait.jpg {size} {n//1024}KB  <- {os.path.basename(ps)}{note}")
+    copy_qrs()
     print("\n== 缺失/待补 ==" if missing else "\n== 全部完成 ==")
     for m in missing:
         print("  ", m)

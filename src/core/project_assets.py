@@ -45,6 +45,15 @@ def model_path(index: int) -> str:
     return os.path.join(MODELS_DIR, f"{s}.glb") if s else ""
 
 
+def qr_path(index: int) -> str:
+    """项目二维码路径（扫码了解详情）；不存在时返回空串"""
+    s = slug_of(index)
+    if not s:
+        return ""
+    p = os.path.join(IMAGES_DIR, s, "qr.png")
+    return p if os.path.exists(p) else ""
+
+
 def video_path(index: int) -> str:
     """介绍视频路径（.mp4）；不存在时返回空串"""
     s = slug_of(index)

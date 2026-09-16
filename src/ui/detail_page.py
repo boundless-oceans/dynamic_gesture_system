@@ -161,7 +161,14 @@ class DetailPage(BasePage):
         lo.setContentsMargins(0,0,0,0)
         for i in range(3):
             im=QLabel(); im.setAlignment(Qt.AlignCenter); im.setMinimumHeight(96)
-            path = _PA.detail_path(self._pi, i+1)
+            # 第 3 张：优先显示项目二维码（扫码了解），没有二维码时用详情图
+            path = (_PA.qr_path(self._pi) or _PA.detail_path(self._pi, 3)) if i == 2 \
+                   else _PA.detail_path(self._pi, i+1)
+            if i == 2 and path:
+                # 二维码用白底，保证对比度便于扫描
+                im.setStyleSheet("background:#fff;border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
+                im.setPixmap(QPixmap(path).scaled(240,240,Qt.KeepAspectRatio,Qt.SmoothTransformation))
+                lo.addWidget(im,stretch=1); continue
             if os.path.exists(path):
                 im.setPixmap(QPixmap(path).scaled(260,150,Qt.KeepAspectRatio,Qt.SmoothTransformation))
                 im.setStyleSheet("background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:6px;")
