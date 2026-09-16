@@ -20,7 +20,7 @@
 | 3D 交互展示 | three.js(r147) 加载 GLB 模型，自动居中/适配、自转，扁平模型自动侧倾 |
 | 传承人风采 | 5 位传承人（视频/照片），上下切换；左/右可快进快退视频 |
 | 非遗地图 | 高德瓦片地图，**地名常显**，手势平移 + 缩放 |
-| 设置/手势说明 | 操作对照表 |
+| 设置/说明 | 三标签页：手势对照表（按各页真实映射维护）/ 参数调节（现场调参滑条）/ 图片来源 |
 
 ### 手势交互（按页面）
 | 页面 | 手势 | 动作 |
@@ -83,9 +83,9 @@ python main.py
 
 ```
 dynamic_gesture_system/
-├── main.py                     入口
+├── main.py                     入口（权重不可用时弹窗告警并停用推理）
 ├── src/
-│   ├── config.py               全局配置（模型/推理/手势阈值/摄像头）
+│   ├── config.py               全局配置（模型/推理/手势阈值/摄像头/现场可调项）
 │   ├── core/
 │   │   ├── camera.py           摄像头采集（自动选外接、CLAHE 仅用于预览）
 │   │   ├── frame_buffer.py     线程安全帧缓冲
@@ -104,9 +104,17 @@ dynamic_gesture_system/
 │   ├── models/<slug>.glb       3D 模型（脚本生成，未入库）
 │   └── videos/                 介绍视频（未入库）
 ├── tools/
-│   ├── prepare_assets.py       从 F:\非遗资料 生成图片素材（含裁剪/轮播图）
+│   ├── prepare_assets.py       从文化馆提供的原始素材生成图片（含裁剪/轮播图）
 │   ├── fbx_to_glb.py           Blender 无头 FBX → GLB（归一化尺寸与中心）
 │   └── render_slides.py        Blender 渲染 3D 模型 → 轮播图
+├── tests/                      自动化测试（unittest，无需额外依赖）
+│   ├── test_gesture_gate.py    去抖/锁存/冷却状态机 + 六页手势路由
+│   ├── test_frame_buffer.py    帧缓冲
+│   ├── test_gesture_mapper.py  13 类索引与映射
+│   ├── test_config_tuning.py   现场调参文件的载入与容错
+│   ├── test_data_integrity.py  项目↔素材一致性
+│   ├── test_pages_construct.py 页面构造冒烟（含主窗口）
+│   └── manual/                 需要摄像头/显示器的交互式冒烟脚本
 ├── weights/                    模型权重（未入库）
 └── environment.yml / requirements.txt
 ```
@@ -115,7 +123,10 @@ dynamic_gesture_system/
 
 ## 四、素材与生成脚本
 
-素材来自文化馆资料（本机 `F:\非遗资料`），已处理成 `assets/` 下的成品。
+素材来自文化馆提供的项目资料，已处理成 `assets/` 下的成品。
+
+> 三个脚本里的源素材路径需按本机实际情况填写（见各脚本顶部常量）；
+> 资料目录不在版本库中，脚本仅用于一次性生成，成品 `assets/` 才是应用的依赖。
 
 | 脚本 | 作用 |
 |---|---|
@@ -128,7 +139,8 @@ dynamic_gesture_system/
 - 传承人页视频 → `assets/videos/inheritors/<文件名>.mp4`（文件名与 `inheritors.json` 中登记的一致）
 
 **授权**：包公祠实景照来自 Wikimedia Commons（CC BY-SA 3.0），署名与许可要求见
-`assets/images/CREDITS.md` —— **对外展示时需保留署名**，建议在设置页增加"图片来源"说明。
+`assets/images/CREDITS.md` —— **对外展示时需保留署名**，该说明已在
+设置页 →「图片来源」中呈现（含作者、来源、许可链接与修改说明）。
 
 ---
 
@@ -141,7 +153,7 @@ dynamic_gesture_system/
 - **类别**：IPN-Hand **13 类**（B0A…G11），索引顺序已实机验证
 - **权重**：`weights/TSQ_ipnhand_RGB_resnet50_shift0.50_blockres_avg_segment8_e50.pth`
   - 由服务器训练产出（含 `optimizer`，227MB；只提取 `state_dict` 可缩到 114MB，fp16 约 57MB）
-  - 训练代码（改进版）：本地镜像 `F:\dste_dynamic_v4`，实际在服务器运行
+  - 训练代码（改进版）：在服务器上运行，训练仓库单独维护，不在本仓库内
   - 训练侧改进：水平翻转 + 方向类标签对调、类别均衡采样、ColorJitter/RandomErasing、
     `load_checkpoint` 兼容 torch≥2.6、`TemporalModule.count` 重置等
 - **推理后端**：默认 **PyTorch（CPU）**；ONNX Runtime 代码保留但默认关闭
@@ -169,18 +181,90 @@ dynamic_gesture_system/
 
 > 识别偏慢/偏抖时：优先调 `CONFIDENCE_THRESHOLD`、`SMOOTH_FRAMES`、`ACTION_COOLDOWN_MS`。
 
+**其中 6 项可在应用内直接调**：设置页 →「参数调节」，拖动即时生效，不用改代码重启。
+
+| 可在界面调整 | 只能改代码 |
+|---|---|
+| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`MAX_LOCK_MS`、`DISPLAY_HOLD_MS` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS` |
+
+界面改动**默认只临时生效**，点「保存为默认」才写入 `config_local.json`（已 gitignore）——
+避免观众误拖后展台参数被永久改坏。该文件被写坏时数值会被夹到合法区间、类型不符则忽略。
+
+### 手势交互区（画面里有好几个人怎么办）
+
+模型**只看画面中央一块**：`GroupScale(256)` 把短边缩到 256，再 `CenterCrop(224)` 取中心，
+所以画面四周它根本看不到。实测 640×480 下等于中央约 **420×420 像素**（x:109~530, y:29~450）。
+
+预览上会用橙色虚框把这块画出来（`config.CAMERA_SHOW_ZONE`，嫌乱可关掉），并标注
+"手势交互区 · 请将手伸入"。**这不是新增约束，只是把已有约束从看不见变成看得见**——
+访客一眼就知道该站哪里、手该伸到哪儿。
+
+框的位置由 `inference.model_view_rect()` 从预处理参数算出，不写死；`tests/test_interaction_zone.py`
+用真实预处理管线校验了这层对应关系（覆盖率 + 标记点坐标映射 + 框外内容不可见），
+改了预处理参数而忘记同步的话测试会直接报出来。
+
+**多人场景**：路人在画面边缘/背景基本不会被看到；真正麻烦的是两个人同时在中央区域做手势
+——系统没有"谁在操作"的概念，会在两种意图之间来回。交互区提示能大幅减少这种情况（大家会
+自然排队站到框里）。若现场仍是开放大屏、人流密集，可进一步考虑手部检测仲裁
+（只对最大/最近的那只手推理），但那需要引入新依赖并重新验证精度，目前未做。
+
 ---
 
-## 七、打包（PyInstaller，暂未执行）
+### 空闲降频（长时间没手势时降低推理频率）
+
+展台多数时间没人在做手势，而一次推理要几百毫秒。判据用**模型自己的输出**：
+最近一次 `raw 置信度 ≥ CONFIDENCE_THRESHOLD` 的时刻记为"活跃"，之后越久没活跃就越降频。
+
+```
+IDLE_LADDER = [
+    (0,      20),      # 8s 内有过手势：全速，跟手
+    (8000,   300),     # 空闲 8s：最坏多等 0.3s（基本无感）
+    (60000,  1000),    # 空闲 60s：空馆，最省；最坏多等 1s
+]
+```
+
+用模型输出而不是画面帧差，是因为它**不需要标定阈值、不受现场光线与摄像头噪声影响**。
+实测支撑：空场景下 raw 置信度中位 0.227、最大 **0.491**，从不达到 0.6；真实手势能过 0.6，
+两边分得很开。⚠️ 判据必须用 `CONFIDENCE_THRESHOLD`(0.6)，**不能用 `DISPLAY_CONFIDENCE`(0.35)**
+——按 0.35 判，空场景有 4%~52% 的采样会被误认成"有手势"，空闲计时永远清零、降频永不触发。
+
+**为什么最深只到 1s**：降得越深，越容易漏掉"访客走过来做的第一个手势"。
+空闲间隔 1s 时，一个 1 秒长的手势必然被覆盖；到 5s 就只剩约 20% 命中率。
+空馆本身没人在乎，但**"空馆状态下的第一个访客"恰恰是最输不起的那次交互**。
+
+**交互中途停顿不受影响**：阶梯只在 8s / 60s 两个点降档，所以"做完一个手势、停 2~3 秒看结果"
+**根本不会离开全速档**；任何一次 `raw ≥ 0.6` 都立刻把空闲计时清零、马上回全速。
+
+档位切换会在终端打日志（`空闲 8 秒，推理间隔 300 ms`），现场可据此确认是否正常降频。
+总开关 `config.IDLE_LADDER_ENABLED`。
+
+---
+
+## 七、测试
+
+```bash
+python -m unittest discover -s tests -t .        # 全部（墙钟约 10 秒，主要是 torch/QtWebEngine 的导入）
+python -m unittest tests.test_gesture_gate -v    # 单个模块
+```
+
+标准库 `unittest`，不需要额外依赖。GUI 用例通过 `QT_QPA_PLATFORM=offscreen` 离屏运行。
+最要紧的是 `test_gesture_gate.py`——那套状态机是调试最久、也最容易被参数调整带坏的部分。
+交互式冒烟脚本在 `tests/manual/`，详见 `tests/README.md`。
+
+---
+
+## 八、打包（PyInstaller，暂未执行）
 
 - 体积估算：运行时依赖约 1.0GB（PySide6 + torch + OpenCV）+ 素材（图片 5MB、模型 31MB、视频约 125MB）→ **约 1.3GB**
+  （注：`gesture` 环境实测 1.7GB，其中含各包的 test 套件、头文件与 pip 缓存等不会被打进产物的内容；
+  torch 装的是 `+cpu` 版，没有 CUDA 库）
 - 需一并打包：`pages/`（three.js、GLTFLoader、leaflet）、`assets/`、`weights/`
 - 需收集：QtMultimedia 插件与 FFmpeg 后端 DLL（否则视频无法播放）、QtWebEngine 资源
 - `assets/videos/`、`assets/models/`、`weights/` 均在 `.gitignore` 中，打包时需从本地目录取
 
 ---
 
-## 八、参考
+## 九、参考
 
 - DSTE-Net：Dynamic Spatial-Temporal Excitation Network（本系统采用的时空激励结构）
 - TSM: Temporal Shift Module for Efficient Video Understanding — arXiv:1811.08383

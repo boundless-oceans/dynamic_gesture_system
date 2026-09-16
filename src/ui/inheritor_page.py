@@ -187,7 +187,11 @@ class InheritorPage(BasePage):
             self._vh_lo.addWidget(vw)
             self._player.setLoops(QMediaPlayer.Infinite)
             self._player.setSource(QUrl.fromLocalFile(vpath))
-            self._player.play()
+            # 只在页面确实可见时才播：本页在启动时就会构造一次，
+            # 无条件 play() 会让一段几分钟的视频在后台一直解码（还带音轨）。
+            # 切换传承人时会重建播放器，所以这里要按可见性决定，而不是完全交给 showEvent。
+            if self.isVisible():
+                self._player.play()
             self._media.setCurrentIndex(1)
             return
         ppath = _PA.inheritor_photo(it.get("photo", ""))

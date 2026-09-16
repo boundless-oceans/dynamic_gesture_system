@@ -1,6 +1,6 @@
 """DSTE 时空激励模块（LSTE + GSTE）
 
-与 IPN-Hand 训练源码 F:\\dste_dynamic_v4\\ops\\temporal_module.py 保持一致。
+与 IPN-Hand 训练源码中的同名模块保持一致。
 其中 CoordAtt 为「带 ECA 的动态时序卷积」结构：
   fc1 以每通道的时序向量 (n*c, n_segment) 为输入 → in_h*2 → 3（softmax）
   fc2 以每通道的空间高/宽向量 (n*c, in_h) 为输入 → in_w*2 → 3（softmax）
@@ -232,6 +232,10 @@ def make_temporal_module(net, n_segment, n_div=8, place='blockres', temporal_poo
         n_segment_list = [n_segment] * 4
     assert n_segment_list[-1] > 0
     print('=> n_segment per stage: {}'.format(n_segment_list))
+
+    # TemporalModule.count 是全局计数器，靠它按顺序索引 h_list。
+    # 每次构建都要从 0 开始，否则同进程内建第二个模型会越界（IndexError）。
+    TemporalModule.count = 0
 
     import torchvision
     if isinstance(net, torchvision.models.ResNet):

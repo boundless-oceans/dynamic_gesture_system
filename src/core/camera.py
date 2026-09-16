@@ -56,37 +56,99 @@ def pick_camera_index(max_idx: int = 5) -> int:
             except Exception: pass
 
     if not found:
-        print("[Camera] 未探测到可用摄像头，回退 CAMERA_INDEX =", config.CAMERA_INDEX)
+        print("[Camera] 未探测到可用摄像头，回退 CAMERA_INDEX =", config.CAMERA_INDEX, flush=True)
         return config.CAMERA_INDEX
     external = [i for i in found if i != 0]
     chosen = external[0] if external else found[0]
+    # flush=True：输出重定向到文件时（现场排查）不带 flush 的日志会丢
     print(f"[Camera] 可用索引 {found} → 选用 {chosen} "
-          f"({'外接' if chosen != 0 else '自带'})")
+          f"({'外接' if chosen != 0 else '自带'})", flush=True)
     return chosen
 
 
 class CameraThread(QThread):
     frame_ready = Signal()
 
+    # 读帧失败处理：短暂休眠避免满核空转；连续失败到阈值则尝试重新打开设备
+    READ_FAIL_SLEEP_MS = 100
+    READ_FAIL_REOPEN = 30
+
     def __init__(self, frame_buffer):
         super().__init__()
         self.frame_buffer = frame_buffer
         self.cap = None
+        self._idx = config.CAMERA_INDEX
         self._current_frame = None
         self._mutex = QMutex()
         self._running = False
+        self._signal_ok = True
+
+    def _open(self):
+        """打开摄像头并设置采集分辨率"""
+        cap = cv2.VideoCapture(self._idx)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+        return cap
+
+    def _reopen(self):
+        """掉线后尝试重新打开设备（USB 松脱/被抢占后插回可自动恢复）"""
+        try:
+            self.cap.release()
+        except Exception:
+            pass
+        try:
+            self.cap = self._open()
+        except Exception as e:
+            print(f"[Camera] 重新打开设备失败: {e}", flush=True)
+
+    def _set_signal_ok(self, ok: bool):
+        self._mutex.lock()
+        self._signal_ok = ok
+        self._mutex.unlock()
+
+    def signal_ok(self) -> bool:
+        """摄像头是否正常出帧（掉线时为 False，供预览层显示提示而非停在旧画面）"""
+        self._mutex.lock()
+        ok = self._signal_ok
+        self._mutex.unlock()
+        return ok
 
     def run(self):
-        idx = pick_camera_index()
-        self.cap = cv2.VideoCapture(idx)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.CAMERA_WIDTH)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+        self._idx = pick_camera_index()
+        self.cap = self._open()
+        # CLAHE 只建一次：每帧新建一个对象纯属浪费
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)) \
+            if config.CAMERA_ENHANCE_PREVIEW else None
         self._running = True
+        self._set_signal_ok(True)
+        fails = 0
 
         while self._running:
-            ret, frame = self.cap.read()
+            try:
+                ret, frame = self.cap.read()
+            except Exception as e:
+                print(f"[Camera] 读帧异常: {e}", flush=True)
+                ret, frame = False, None
             if not ret:
+                # 掉线：休眠避免满核空转；连续失败到阈值重开设备，否则插回去也救不回来
+                fails += 1
+                if fails == 1:
+                    print("[Camera] 读帧失败，可能掉线；将自动重试重连", flush=True)
+                    # 掉线时清空缓冲：否则推理线程会一直对着最后那几十帧陈旧画面
+                    # 反复推理（满速空转），悬浮窗也会停在旧结果上
+                    self.frame_buffer.clear()
+                if fails % self.READ_FAIL_REOPEN == 0:
+                    print(f"[Camera] 连续失败 {fails} 次，重新打开设备 {self._idx}", flush=True)
+                    self._reopen()
+                    fails = 0
+                self._set_signal_ok(False)
+                self.msleep(self.READ_FAIL_SLEEP_MS)
                 continue
+
+            if not self._signal_ok:
+                print("[Camera] 画面已恢复", flush=True)
+            self._set_signal_ok(True)
+            fails = 0
 
             # BGR -> RGB
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -99,10 +161,9 @@ class CameraThread(QThread):
 
             # 预览画面：可选 CLAHE + 去噪增强（仅显示用）
             preview = mirrored
-            if config.CAMERA_ENHANCE_PREVIEW:
+            if clahe is not None:
                 lab = cv2.cvtColor(preview, cv2.COLOR_RGB2LAB)
                 l, a, b = cv2.split(lab)
-                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
                 l = clahe.apply(l)
                 lab = cv2.merge([l, a, b])
                 preview = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)

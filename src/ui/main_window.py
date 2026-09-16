@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
         self._toast_until=0.0      # "已执行"提示截止时间(ms)
         self._toast_text=""
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
-        # 换页：清锁 + 重置去抖，避免带着上一页的锁
+        # 换页：重置去抖（锁存要保留，理由见 _on_page_changed）
         self.stack.currentChanged.connect(self._on_page_changed)
         central=QWidget(); central.setStyleSheet("background:transparent;")
         self.stack.setStyleSheet("background:transparent;")
@@ -71,12 +71,25 @@ class MainWindow(QMainWindow):
         self.bs.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,1);}")
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
     def _on_page_changed(self, idx):
-        # 换页：清锁 + 重置去抖（要求在新页面重新做手势），避免带着上一页的锁
-        self._locks.clear(); self._lg=None; self._gc=0
+        # 重置去抖：新页面上要重新攒够连续次数。
+        #
+        # 但**不要清锁**——这里曾经清过，结果正好帮了倒忙：换页那一刻，
+        # 用户的手通常还停在触发手势的姿势上（尤其是单击后慢松手），
+        # 锁一清，残留手势就失去了唯一的防护，几秒后在新页面上又触发一次
+        # （首页单击进详情 → 残留单击又被详情页当"确认" → 直接弹回首页）。
+        # 锁应该跟着"手"走：由松手（置信度掉下显示门槛）来释放，
+        # 超时解锁只是兜底，见 MAX_LOCK_MS。
+        self._lg=None; self._gc=0
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
-        self.cw.start(self.frame_buffer); self.it.start()
+        self.cw.start(self.frame_buffer)
+        # 权重不可用时不启动推理：随机权重的输出看着"很正常"，
+        # 与其在展台上放一堆错误手势，不如只留摄像头预览、用鼠标操作。
+        if self.recognizer.status == "ok":
+            self.it.start()
+        else:
+            print(f"[Main] 权重状态={self.recognizer.status}，手势识别未启用", flush=True)
     def _go_detail(self,i):
         self.pages["detail"].set_project(i); self.pages["detail"].reset_to_main()
         self.stack.setCurrentIndex(2)
@@ -92,11 +105,13 @@ class MainWindow(QMainWindow):
             self.cw.stop(); self.cw.hide(); self.bc.setText("打开摄像头")
             # 清空缓冲：关摄像头后推理线程不再拿旧帧预测
             self.frame_buffer.clear()
-            self.recognizer._prob_win.clear()
+            self.recognizer.reset_smoothing()
         else:
             self.frame_buffer.clear()
-            self.recognizer._prob_win.clear()
-            self.cw.show(); self.cw.start(self.frame_buffer); self.bc.setText("关闭摄像头")
+            self.recognizer.reset_smoothing()
+            self.it.mark_active()          # 重开摄像头：空闲计时清零，马上回全速档
+            self.cw.show(); self.cw.start(self.frame_buffer)
+            self.bc.setText("关闭摄像头")
     def _on_result(self,r):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))

@@ -38,13 +38,6 @@ class _FitLabel(QLabel):
         h = max(1, self.height() - 2*self._pad)
         self.setPixmap(self._orig.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
-P=[{"n":"葫芦烙画","s":[("历史渊源","源于宋代，合肥民间艺人以葫芦为载体运用刻烙绘等技法。"),("技艺特点","以刀代笔浮雕镂空，构图饱满线条流畅。"),("传承现状","多位省市级传承人，通过工作室进校园培养后继人才。")]},
-   {"n":"刘铭传故事","s":[("历史渊源","刘铭传，安徽合肥人，清末淮军名将、台湾首任巡抚。"),("技艺特点","说书戏曲形式融合庐剧唱腔和合肥方言。"),("传承现状","多个社区定期举办故事会，列入市级非遗。")]},
-   {"n":"包公故事","s":[("历史渊源","合肥流传千年的民间文学，围绕北宋名臣包拯生平事迹展开。"),("技艺特点","说唱结合融合庐剧唱腔，地方文化特色浓郁。"),("传承现状","2023年通过文创产品数字展陈实现活态传承。")]},
-   {"n":"庐剧","s":[("历史渊源","庐剧原名倒七戏，安徽主要地方剧种，流行江淮近两百年。"),("技艺特点","唱腔丰富分主调花腔，表演朴实以锣鼓伴奏为主。"),("传承现状","合肥庐剧院传承主力，入选首批国家级非遗。")]},
-   {"n":"火笔画","s":[("历史渊源","以铁扦为笔以火为墨烙绘，源于清代江淮独有民间美术形式。"),("技艺特点","不同温度烙铁烫出深浅褐色痕迹，一笔成型不可修改。"),("传承现状","合肥设传习所，多位传承人，作品被博物馆收藏。")]},
-   {"n":"吴山铁字","s":[("历史渊源","源于肥西吴山镇铁画延伸，以铁为墨以锤为笔。"),("技艺特点","书法与锻造结合，字体苍劲有力具独特金属质感。"),("传承现状","省级非遗，吴山镇建基地，作品成合肥文化名片。")]}]
-
 class DetailPage(BasePage):
     go_home=Signal(); go_viewer=Signal()
     def __init__(self,pi=2):
@@ -78,7 +71,13 @@ class DetailPage(BasePage):
             self.resume_video()
     def _rb(self):
         self._dispose_video()
-        while self.stack.count(): self.stack.removeWidget(self.stack.widget(0))
+        # removeWidget 只把控件移出布局、不销毁（父对象仍是 stack），
+        # 必须显式 deleteLater，否则每次切项目都泄漏整棵旧页面（含播放器）。
+        while self.stack.count():
+            w = self.stack.widget(0)
+            self.stack.removeWidget(w)
+            w.setParent(None)
+            w.deleteLater()
         self.stack.addWidget(self._m()); self.stack.addWidget(self._d())
         self.stack.setCurrentIndex(0)
     def _dispose_video(self):
@@ -86,9 +85,15 @@ class DetailPage(BasePage):
         if self._player is not None:
             self._player.stop()
             self._player.setSource(QUrl())
+            self._player.deleteLater()
             self._player = None
-        self._audio = None
-        self._vwidget = None
+        if self._audio is not None:
+            self._audio.deleteLater()
+            self._audio = None
+        if self._vwidget is not None:
+            self._vwidget.setParent(None)
+            self._vwidget.deleteLater()
+            self._vwidget = None
     def pause_video(self):
         if self._player is not None:
             self._player.pause()
@@ -272,13 +277,26 @@ class DetailPage(BasePage):
             self._player.setVideoOutput(vw)
             self._player.setLoops(QMediaPlayer.Infinite)     # 循环播放
             self._player.setSource(QUrl.fromLocalFile(path))
-            self._player.play()
+            # 构造时不 play()：这个页面在启动时就建好了但并不可见，
+            # 一旦 play() 就会在后台解码整段视频（还带音轨）。
+            # 播放交给 _on_subpage()/showEvent() —— 切到"非遗详情"子页时才真正开始。
             self._vwidget=vw
             lo.addWidget(vw)
         else:
-            lb=QLabel("暂无视频"); lb.setAlignment(Qt.AlignCenter)
-            lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
-            lo.addWidget(lb)
+            # 六个项目里只有两个有介绍视频。不放"暂无视频"空框，
+            # 改用传承人配图充位——保持原有三栏布局不变，同时不浪费这块面积。
+            p=_PA.portrait_path(self._pi)
+            if p and os.path.exists(p):
+                lo.addWidget(_FitLabel(p, pad=8), stretch=1)
+                cap=QLabel("暂无介绍视频 · 图为传承人风采")
+                cap.setAlignment(Qt.AlignCenter)
+                cap.setFont(QFont("Microsoft YaHei",10))
+                cap.setStyleSheet("background:transparent;color:#888;")
+                lo.addWidget(cap)
+            else:
+                lb=QLabel("暂无视频"); lb.setAlignment(Qt.AlignCenter)
+                lb.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
+                lo.addWidget(lb)
         return f
     def _im(self):
         f=QFrame(); f.setStyleSheet("background:transparent;"); lo=QVBoxLayout(f); lo.setSpacing(8)
