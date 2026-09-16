@@ -67,6 +67,9 @@ class _Harness:
         self.clock = _Clock()
         self.pages = collections.defaultdict(_Calls)
         self.cw = _Calls()
+        # _on_page_changed 会把这两个全局按钮一起置顶
+        self.bc = _Calls()
+        self.bs = _Calls()
         self._page_idx = IDX[page]
         # _ocg 的状态字段
         self._lg = None
@@ -96,6 +99,10 @@ class _Harness:
     def _on_result(self, r):
         MainWindow._on_result(self, r)
 
+    def _on_page_changed(self, idx):
+        self._page_idx = idx
+        MainWindow._on_page_changed(self, idx)
+
     def ocg(self, g):
         self._ocg(g)
 
@@ -124,8 +131,11 @@ class _Base(unittest.TestCase):
                         "CONFIDENCE_THRESHOLD", "DISPLAY_CONFIDENCE",
                         "SEEK_STEP_MS", "TOAST_MS")}
         config.CONSISTENCY_COUNT = 2
-        config.ACTION_COOLDOWN_MS = 900
-        config.MAX_LOCK_MS = 2000
+        # 冷却与锁存上限都跟随出厂值，不写死：这些用例要验证"按出厂参数，
+        # 慢松手不会被重复触发"，写死就测不出参数被改小的情况。
+        # 依赖时长的用例一律用 config.ACTION_COOLDOWN_MS 推算，不要用魔数。
+        config.ACTION_COOLDOWN_MS = config.DEFAULTS["ACTION_COOLDOWN_MS"]
+        config.MAX_LOCK_MS = config.DEFAULTS["MAX_LOCK_MS"]
         config.SEEK_STEP_MS = 30000
         import src.ui.main_window as mw
         self._mw = mw
@@ -167,31 +177,81 @@ class TestCooldownAndLock(_Base):
     def test_冷却期内不再响应(self):
         self.h.fire("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next"])
-        self.h.clock.advance(500)                  # < ACTION_COOLDOWN_MS
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS - 100)   # 差一点没过冷却
         self.h._lg = None; self.h._gc = 0
         self.h.ocg("swipe_right"); self.h.ocg("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next"], "冷却期内不该再次触发")
 
     def test_锁存期内同一动作只触发一次(self):
+        self.assertLess(config.ACTION_COOLDOWN_MS, config.MAX_LOCK_MS,
+                        "前提：冷却必须短于锁存，否则这条测的是冷却不是锁存")
         self.h.fire("swipe_right")
-        self.h.clock.advance(1500)                 # 冷却已过，但 < MAX_LOCK_MS
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 200)   # 冷却已过，但仍在锁存期
         self.h._lg = None; self.h._gc = 0
         self.h.ocg("swipe_right"); self.h.ocg("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next"], "未松手前不该重复触发")
 
     def test_锁存超时后可以再做一次(self):
         self.h.fire("swipe_right")
-        self.h.clock.advance(2500)                 # > MAX_LOCK_MS，视为自动解锁
+        self.h.clock.advance(config.MAX_LOCK_MS + 500)   # 超过兜底时限，视为自动解锁
         self.h._lg = None; self.h._gc = 0
         self.h.ocg("swipe_right"); self.h.ocg("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next", "_next"])
 
     def test_不同动作互不锁存(self):
         self.h.fire("swipe_right")
-        self.h.clock.advance(1000)                 # 冷却已过，仍在 swipe_right 的锁存期
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 200)   # 冷却已过，仍在锁存期
         self.h._lg = None; self.h._gc = 0
         self.h.ocg("swipe_left"); self.h.ocg("swipe_left")
         self.assertEqual(self.h.page_calls("home"), ["_next", "_prev"])
+
+
+class TestPageChangeKeepsLatch(_Base):
+    """换页后残留手势不能在新页面上再触发一次
+
+    实测踩过的完整场景（首页单击 → 慢松手 → 被弹回首页）：
+      t=0    首页单击触发"确认" → 进入详情页
+      t≈0    换页，去抖重置
+      t=600  手还停在单击姿势，模型仍读成单击，被冷却挡住
+      t=1800 冷却过期、去抖攒够 → 若此时锁存已被换页清掉，就会再触发一次
+             而详情页的"确认"是激活选中项（默认"返回主页"）→ 弹回首页
+    根因是换页时清掉了锁存——恰恰在防护最该保留的时刻撤掉了它。
+    """
+
+    def test_换页不再清掉锁存(self):
+        self.h.fire("click")
+        self.assertTrue(self.h._locks, "触发后应建立锁存")
+        locks_before = dict(self.h._locks)
+        self.h._on_page_changed(IDX["detail"])
+        self.assertEqual(self.h._locks, locks_before,
+                         "换页不该清锁——手还停在原姿势上")
+
+    def test_换页会重置去抖(self):
+        self.h.fire("click")
+        self.h._on_page_changed(IDX["detail"])
+        self.assertIsNone(self.h._lg)
+        self.assertEqual(self.h._gc, 0)
+
+    def test_慢松手不会在新页面上重复触发(self):
+        h = self.h
+        # t=0 首页单击 → 进入详情页
+        h.pages["home"] = _Calls(current_index=0)
+        h.fire("click")
+        self.assertEqual(h.detail_arg, 0, "首页单击应进入详情页")
+
+        # 换页（用户的手还停在单击姿势上）
+        h.pages["detail"] = _Calls()
+        h._on_page_changed(IDX["detail"])
+
+        # 之后每秒都还有"单击"被识别出来（慢松手），且置信度一直很高
+        # ——注意高置信度意味着"松手解锁"这条路径不会生效，只能靠锁存挡住
+        for _ in range(5):
+            h.clock.advance(600)
+            h.on_result({"gesture": "2", "confidence": 0.95,
+                         "raw_gesture": "2", "raw_confidence": 0.95})
+
+        self.assertNotIn("activate_selected", h.page_calls("detail"),
+                         "详情页不该被残留的单击触发'确认'（那会弹回首页）")
 
 
 class TestLatchRelease(_Base):

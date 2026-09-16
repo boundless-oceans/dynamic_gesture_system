@@ -39,7 +39,7 @@ class MainWindow(QMainWindow):
         self._toast_until=0.0      # "已执行"提示截止时间(ms)
         self._toast_text=""
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
-        # 换页：清锁 + 重置去抖，避免带着上一页的锁
+        # 换页：重置去抖（锁存要保留，理由见 _on_page_changed）
         self.stack.currentChanged.connect(self._on_page_changed)
         central=QWidget(); central.setStyleSheet("background:transparent;")
         self.stack.setStyleSheet("background:transparent;")
@@ -71,8 +71,15 @@ class MainWindow(QMainWindow):
         self.bs.setStyleSheet("QPushButton{background:rgba(255,255,255,0.45);border:1px solid rgba(255,255,255,0.6);border-radius:8px;}QPushButton:hover{background:rgba(255,255,255,1);}")
         self.bs.clicked.connect(lambda:self.stack.setCurrentIndex(4)); self.bs.show()
     def _on_page_changed(self, idx):
-        # 换页：清锁 + 重置去抖（要求在新页面重新做手势），避免带着上一页的锁
-        self._locks.clear(); self._lg=None; self._gc=0
+        # 重置去抖：新页面上要重新攒够连续次数。
+        #
+        # 但**不要清锁**——这里曾经清过，结果正好帮了倒忙：换页那一刻，
+        # 用户的手通常还停在触发手势的姿势上（尤其是单击后慢松手），
+        # 锁一清，残留手势就失去了唯一的防护，几秒后在新页面上又触发一次
+        # （首页单击进详情 → 残留单击又被详情页当"确认" → 直接弹回首页）。
+        # 锁应该跟着"手"走：由松手（置信度掉下显示门槛）来释放，
+        # 超时解锁只是兜底，见 MAX_LOCK_MS。
+        self._lg=None; self._gc=0
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
