@@ -104,7 +104,7 @@ dynamic_gesture_system/
 │   ├── models/<slug>.glb       3D 模型（脚本生成，未入库）
 │   └── videos/                 介绍视频（未入库）
 ├── tools/
-│   ├── prepare_assets.py       从 F:\非遗资料 生成图片素材（含裁剪/轮播图）
+│   ├── prepare_assets.py       从文化馆提供的原始素材生成图片（含裁剪/轮播图）
 │   ├── fbx_to_glb.py           Blender 无头 FBX → GLB（归一化尺寸与中心）
 │   └── render_slides.py        Blender 渲染 3D 模型 → 轮播图
 ├── tests/                      自动化测试（unittest，无需额外依赖）
@@ -123,7 +123,10 @@ dynamic_gesture_system/
 
 ## 四、素材与生成脚本
 
-素材来自文化馆资料（本机 `F:\非遗资料`），已处理成 `assets/` 下的成品。
+素材来自文化馆提供的项目资料，已处理成 `assets/` 下的成品。
+
+> 三个脚本里的源素材路径需按本机实际情况填写（见各脚本顶部常量）；
+> 资料目录不在版本库中，脚本仅用于一次性生成，成品 `assets/` 才是应用的依赖。
 
 | 脚本 | 作用 |
 |---|---|
@@ -150,7 +153,7 @@ dynamic_gesture_system/
 - **类别**：IPN-Hand **13 类**（B0A…G11），索引顺序已实机验证
 - **权重**：`weights/TSQ_ipnhand_RGB_resnet50_shift0.50_blockres_avg_segment8_e50.pth`
   - 由服务器训练产出（含 `optimizer`，227MB；只提取 `state_dict` 可缩到 114MB，fp16 约 57MB）
-  - 训练代码（改进版）：本地镜像 `F:\dste_dynamic_v4`，实际在服务器运行
+  - 训练代码（改进版）：在服务器上运行，训练仓库单独维护，不在本仓库内
   - 训练侧改进：水平翻转 + 方向类标签对调、类别均衡采样、ColorJitter/RandomErasing、
     `load_checkpoint` 兼容 torch≥2.6、`TemporalModule.count` 重置等
 - **推理后端**：默认 **PyTorch（CPU）**；ONNX Runtime 代码保留但默认关闭

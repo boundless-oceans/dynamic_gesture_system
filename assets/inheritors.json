@@ -1,5 +1,5 @@
 {
-  "_comment": "传承人页数据。featured 里的人来自『与首页 6 个项目不同』的非遗项目，避免与详情页重复。video 指向 assets/videos/inheritors/<文件名>；photo 指向 assets/images/inheritors/<文件名>（没有视频时显示照片）。bio 摘自 F:\\非遗资料 里的申报书/整理文档，未编造。",
+  "_comment": "传承人页数据。featured 里的人来自『与首页 6 个项目不同』的非遗项目，避免与详情页重复。video 指向 assets/videos/inheritors/<文件名>；photo 指向 assets/images/inheritors/<文件名>（没有视频时显示照片）。bio 摘自文化馆项目资料里的申报书/整理文档，未编造。",
   "items": [
     {
       "name": "姜洪亮",

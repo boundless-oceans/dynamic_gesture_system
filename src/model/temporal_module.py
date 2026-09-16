@@ -1,6 +1,6 @@
 """DSTE 时空激励模块（LSTE + GSTE）
 
-与 IPN-Hand 训练源码 F:\\dste_dynamic_v4\\ops\\temporal_module.py 保持一致。
+与 IPN-Hand 训练源码中的同名模块保持一致。
 其中 CoordAtt 为「带 ECA 的动态时序卷积」结构：
   fc1 以每通道的时序向量 (n*c, n_segment) 为输入 → in_h*2 → 3（softmax）
   fc2 以每通道的空间高/宽向量 (n*c, in_h) 为输入 → in_w*2 → 3（softmax）
