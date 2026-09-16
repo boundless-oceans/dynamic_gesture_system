@@ -85,13 +85,17 @@ class GestureRecognizer:
         frames: list of 8 numpy arrays
         returns: {"gesture": str, "confidence": float, "top3": [(label, prob), ...]}
         """
-        with torch.no_grad():
+        with torch.inference_mode():
             input_tensor = self.preprocess(frames).to(self.device)
             output = self.model(input_tensor)          # (1, num_classes)
             probs = torch.softmax(output, dim=1)        # (1, num_classes)
 
+            # 即时结果（显示用，跟手）
+            raw_conf, raw_idx = torch.max(probs, dim=1)
+
+            # 平滑结果（触发用，稳定）
             self._prob_win.append(probs)
-            smoothed = torch.stack(list(self._prob_win), dim=0).mean(0)  # 平滑
+            smoothed = torch.stack(list(self._prob_win), dim=0).mean(0)
             top3_prob, top3_idx = torch.topk(smoothed, k=3, dim=1)
 
         results = {
@@ -100,7 +104,10 @@ class GestureRecognizer:
             "top3": [
                 (str(top3_idx[0, i].item()), round(top3_prob[0, i].item(), 4))
                 for i in range(3)
-            ]
+            ],
+            # 显示用即时预测（不平滑）
+            "raw_gesture": str(raw_idx[0].item()),
+            "raw_confidence": round(raw_conf[0].item(), 4),
         }
         return results
 

@@ -18,7 +18,7 @@ ARCH = "resnet50"
 NUM_SEGMENTS = 8
 # 从最近 ~0.5s 的缓冲里均匀抽 8 帧（铺开时间跨度，动态手势更完整、结果更稳）
 SAMPLE_WINDOW_FRAMES = 15     # ~0.5s @30fps（需 <= FRAME_BUFFER_MAX）
-INFERENCE_INTERVAL_MS = 200   # 推理间隔（毫秒）
+INFERENCE_INTERVAL_MS = 20    # 循环额外间隔（毫秒）。推理本身已是瓶颈，这里只防忙等
 # 概率平滑：最近 SMOOTH_FRAMES 次的 softmax 取平均，抑制单次误判抖动
 SMOOTH_FRAMES = 3
 # 动作触发门槛：低于则不累加去抖/触发操作

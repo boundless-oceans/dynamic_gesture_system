@@ -78,10 +78,11 @@ class MainWindow(QMainWindow):
             self.recognizer._prob_win.clear()
             self.cw.show(); self.cw.start(self.frame_buffer); self.bc.setText("关闭摄像头")
     def _on_result(self,r):
+        # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
+        dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
+        self.cw.set_confidence(str(dg) if dc >= config.DISPLAY_CONFIDENCE else None, dc)
+        # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
-        # 显示：始终刷新（低于显示门槛显示"无手势"）
-        self.cw.set_confidence(str(gid) if cf >= config.DISPLAY_CONFIDENCE else None, cf)
-        # 触发：只对高置信结果累加去抖/触发动作
         if cf < config.CONFIDENCE_THRESHOLD:
             return
         c=index_to_control(gid)
