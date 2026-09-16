@@ -1,9 +1,12 @@
 """传承人风采页"""
 
+import os
+
 from PySide6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QHBoxLayout, QFrame
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QPixmap
 from src.ui.base_page import BasePage
+from src.core import project_assets as _PA
 
 _BTN_BASE="QPushButton{background:rgba(255,255,255,0.5);border:none;border-radius:25px;}QPushButton:hover{background:rgba(255,255,255,0.9);}"
 _BTN_SEL="QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:25px;}QPushButton:hover{background:#fff;}"
@@ -69,14 +72,15 @@ class InheritorPage(BasePage):
         left_frame.setLayout(left)
         content.addWidget(left_frame, stretch=1)
 
-        # 右侧视频区
+        # 右侧图片区（原来放视频，暂时改为项目图片）
         video_frame = QFrame()
         video_frame.setStyleSheet("QFrame{background:rgba(255,255,255,0.5);border:1px solid rgba(255,255,255,0.6);border-radius:16px;}")
         vl = QVBoxLayout(video_frame)
-        vp = QLabel("视频介绍区")
-        vp.setAlignment(Qt.AlignCenter)
-        vp.setStyleSheet("background:rgba(0,0,0,0.1);border-radius:8px;font-size:18px;color:#888;")
-        vl.addWidget(vp)
+        self._pic = QLabel()
+        self._pic.setAlignment(Qt.AlignCenter)
+        self._pic.setMinimumHeight(320)
+        self._pic.setStyleSheet("background:rgba(0,0,0,0.06);border-radius:8px;")
+        vl.addWidget(self._pic)
         content.addWidget(video_frame, stretch=2)
 
         layout.addLayout(content, stretch=1)
@@ -135,3 +139,17 @@ class InheritorPage(BasePage):
     def _update(self):
         self._name_label.setText(NAMES[self._index])
         self._body_label.setText(BODIES[self._index])
+        self._load_pic()
+
+    def _load_pic(self):
+        """按传承人序号加载对应项目的图片（顺序与 assets/projects.json 一致）
+        用卡片图 thumb.jpg：详情图多为视频截图（带水印/字幕），不适合展示"""
+        path = _PA.thumb_path(self._index)
+        if path and os.path.exists(path):
+            self._pic.setPixmap(QPixmap(path).scaled(
+                560, 420, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self._pic.setStyleSheet("background:rgba(0,0,0,0.06);border-radius:8px;")
+        else:
+            self._pic.setPixmap(QPixmap())
+            self._pic.setText("暂无图片")
+            self._pic.setStyleSheet("background:rgba(0,0,0,0.06);border-radius:8px;font-size:16px;color:#888;")
