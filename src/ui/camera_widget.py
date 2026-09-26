@@ -58,10 +58,19 @@ class CameraWidget(QWidget):
     def start(self, frame_buffer: FrameBuffer):
         if self._camera_thread is not None:
             return
+        # 打开摄像头可能要几秒（外接 USB 尤其慢），先给个"正在打开"而不是
+        # 一直停在"摄像头未开启"——后者看起来像坏了，让人以为设备没接上
+        self._show_placeholder("正在打开摄像头…")
         self._camera_thread = CameraThread(frame_buffer)
         self._camera_thread.frame_ready.connect(self._on_frame_ready)
         self._camera_thread.start()
         self._timer.start(33)
+
+    def _show_placeholder(self, text: str):
+        self._label.setPixmap(QPixmap())
+        self._label.setStyleSheet(
+            "background-color: #1e1e1e; color: #e6a23c; font-size: 14px;")
+        self._label.setText(text)
 
     def stop(self):
         if self._camera_thread is None:
@@ -126,12 +135,12 @@ class CameraWidget(QWidget):
             return
         if not self._camera_thread.signal_ok():
             # 掉线时不要停在最后一帧（看起来像正常），明确提示正在重连
-            self._label.setText("摄像头信号丢失\n正在自动重连…")
-            self._label.setStyleSheet(
-                "background-color: #1e1e1e; color: #e6a23c; font-size: 14px;")
+            self._show_placeholder("摄像头信号丢失\n正在自动重连…")
             return
         frame = self._camera_thread.get_frame()
         if frame is None:
+            # 还没出过帧（正在打开设备 / 未找到摄像头）——保持"正在打开…"提示，
+            # 不要显示成"未开启"让人以为设备没插
             return
         h, w, ch = frame.shape
         qt_image = QImage(frame.data, w, h, ch * w, QImage.Format_RGB888)

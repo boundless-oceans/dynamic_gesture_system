@@ -48,6 +48,10 @@ INPUT_STD = [0.229, 0.224, 0.225]
 CAMERA_INDEX = 0              # 手动指定时的摄像头索引（CAMERA_AUTO_SELECT=False 时生效）
 # 自动选择摄像头：优先外接（通常索引 1+），没有外接时用自带（索引 0）
 CAMERA_AUTO_SELECT = True
+# 优先使用 DirectShow 后端。Windows 上 OpenCV 默认走 MSMF，而部分 USB 摄像头
+# 在 MSMF 下光是"打开 + 设分辨率"就要几十秒（实测罗技外接：MSMF 38.8s / DSHOW 3.2s），
+# 界面会长时间停在"摄像头未开启"，看起来像坏了。DSHOW 失败会自动回退默认后端。
+CAMERA_PREFER_DSHOW = True
 CAMERA_WIDTH = 640
 CAMERA_HEIGHT = 480
 CAMERA_FPS = 30               # 采集帧率

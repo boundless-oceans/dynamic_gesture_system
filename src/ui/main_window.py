@@ -101,7 +101,9 @@ class MainWindow(QMainWindow):
     def _enter_inheritor(self):
         self.stack.setCurrentIndex(0)
     def _tc(self):
-        if self.cw._camera_thread and self.cw._camera_thread._running:
+        # 判据是"线程还在不在"，不是 _running —— 线程刚启动时 _running 可能还没置位，
+        # 那样按钮状态会和实际相反（点一下变成"又开一次"）
+        if self.cw._camera_thread is not None:
             self.cw.stop(); self.cw.hide(); self.bc.setText("打开摄像头")
             # 清空缓冲：关摄像头后推理线程不再拿旧帧预测
             self.frame_buffer.clear()
