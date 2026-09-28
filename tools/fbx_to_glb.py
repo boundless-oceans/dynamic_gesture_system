@@ -11,6 +11,14 @@
 import os
 import subprocess
 import sys
+# Windows 控制台默认是 GBK，直接打印 ✓/✗ 会抛 UnicodeEncodeError 让脚本中途崩掉
+# （实测：生成到一半崩了，产物只写了一半）。强制 UTF-8 输出，任何终端都能跑完。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(REPO, "assets", "models")

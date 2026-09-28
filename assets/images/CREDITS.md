@@ -5,6 +5,16 @@
 
 ## 一、外部素材（自由授权，需保留署名）
 
+**刘铭传像**（用于「刘铭传故事」轮播图）
+- 文件：`assets/images/_external/liumingchuan_portrait.jpg`（生成 `assets/images/liumingchuan/slide3.jpg`）
+- 来源：Wikimedia Commons —
+  <https://commons.wikimedia.org/wiki/File:劉銘傳肖像.jpg>
+- 作者：不详（19 世纪原版照片，摄于 1896 年之前）
+- 授权：**Public domain**（作者不详且年代久远，已过版权保护期）
+- 修改：等比缩放到长边 1200px 后转存
+- 说明文字：刘铭传（1836—1896），清末淮军名将、台湾首任巡抚
+
+
 **包公祠内包拯像**
 - 文件：`assets/images/_external/baogong_temple.jpg`（生成 `assets/images/baogong/slide3.jpg`）
 - 来源：Wikimedia Commons —

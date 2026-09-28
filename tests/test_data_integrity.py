@@ -55,12 +55,21 @@ class TestImageAssets(unittest.TestCase):
     """图片是随版本库分发的，所以这里断言必须存在"""
 
     def test_卡片图与详情图齐全(self):
+        """详情页右列前两格必须是图；第三格有二维码时放码，没码才需要图
+
+        这条约定对应 detail_page._im()：第 3 格优先显示 qr.png，没有码时才回退到
+        3.jpg。所以"每个项目都要有 3.jpg"是过严的假设 —— 庐剧有二维码，
+        它只需要 1.jpg / 2.jpg（原本那第 3 张还是裁剪过的视频截图，已删）。
+        """
         for i, p in enumerate(PROJECTS):
             with self.subTest(project=p["name"]):
                 self.assertTrue(os.path.exists(PA.thumb_path(i)), f"{p['name']} 缺 thumb.jpg")
-                for k in (1, 2, 3):
+                for k in (1, 2):
                     self.assertTrue(os.path.exists(PA.detail_path(i, k)),
                                     f"{p['name']} 缺 {k}.jpg")
+                if not PA.qr_path(i):
+                    self.assertTrue(os.path.exists(PA.detail_path(i, 3)),
+                                    f"{p['name']} 既没有二维码、也没有 3.jpg，详情页第 3 格会空着")
 
     def test_轮播图非空且照片排在渲染图前(self):
         for i, p in enumerate(PROJECTS):

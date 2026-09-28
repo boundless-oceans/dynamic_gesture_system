@@ -7,6 +7,15 @@
 源素材路径是本机 F 盘资料，仅用于一次性处理；处理后应用只依赖 assets/ 下的成品。
 """
 import os
+import sys
+# Windows 控制台默认是 GBK，直接打印 ✓/✗ 会抛 UnicodeEncodeError 让脚本中途崩掉
+# （实测：生成到一半崩了，产物只写了一半）。强制 UTF-8 输出，任何终端都能跑完。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from PIL import Image
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +27,9 @@ MAT = r"F:\非遗资料"
 U = os.path.join(MAT, r"_extracted\yuanma\LuZhouFeiYi_2019.4.30\Assets")
 C = os.path.join(MAT, r"_extracted\WHG\WHG\assets\Images")
 M2 = os.path.join(MAT, "文化馆二期")
+LJ = os.path.join(MAT, "文化馆项目资料整理", "庐剧")
+LM = os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事")
+LM_GJ = os.path.join(LM, "1 刘铭传故居")
 
 THUMB = 500
 DETAIL = 1200
@@ -34,14 +46,12 @@ MAPPING = {
     },
     "liumingchuan": {
         "thumb": os.path.join(U, "Res", "ModelImg", "2刘铭传.png"),
-        # 改用项目资料里的高清原图（李德荣摄）
+        # 详情页右列只显示 2 张（第 3 格是二维码），选中景 + 墓园
+        # 注意：680811...jpg 与"宫保第2"其实是同一个红门内景的重复拍摄，
+        # 只用其中一张 —— 之前两张分散在详情页和轮播里，看着像重复。
         "details": [
-            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
-                         "刘铭传旧居 “宫保第”1  李德荣摄   13705609710_wps图片.jpg"),
-            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
-                         "潜山埋忠骨（刘铭传墓园）李德荣摄_   13705609710.jpg"),
-            os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
-                         "肥西刘铭传故居    李德荣摄   13705609710.jpg"),
+            os.path.join(LM, "680811d938913148a5346d661938083.jpg"),          # 宫保第红门内景
+            os.path.join(LM_GJ, "潜山埋忠骨（刘铭传墓园）李德荣摄_   13705609710.jpg"),
         ],
     },
     "baogong": {
@@ -55,14 +65,11 @@ MAPPING = {
     },
     "luju": {
         "thumb": os.path.join(U, "Res", "ModelImg", "4庐剧.png"),
-        # 这三张是视频截图：带"好看视频"水印(右上)与字幕(底部)，需裁剪
+        # 原来是视频截图（带"好看视频"水印和字幕，只能靠裁剪规避，抠出来的
+        # 画面又糊又碎）。改用文化馆项目资料里的舞台剧照，画质和构图都好得多。
         "details": [
-            {"src": os.path.join(U, "Res", "Img_Xiangqing", "luju", "luju", "梁祝.png"),
-             "crop": (0.0, 0.0, 1.0, 0.73)},                       # 只剩底部字幕
-            {"src": os.path.join(U, "Res", "Img_Xiangqing", "luju", "luju", "小姑.png"),
-             "crop": (0.0, 0.13, 0.85, 0.80)},                     # 去右上水印(含图标)+底部字幕
-            {"src": os.path.join(U, "Res", "Img_Xiangqing", "luju", "luju", "双缩骨.png"),
-             "crop": (0.0, 0.20, 0.85, 0.80)},
+            os.path.join(LJ, "安徽省倒七戏剧团梁祝.png"),
+            os.path.join(LJ, "安徽庐剧团改编的双锁柜.png"),
         ],
     },
     "huobihua": {
@@ -91,13 +98,16 @@ MAPPING = {
 PORTRAITS = {
     "hulu": {"src": os.path.join(M2, "葫芦烙画", "IMG_20200306_115458.jpg"),
              "fallback": {"idx": 2}},
-    "liumingchuan": {"src": os.path.join(C, "Bottom", "刘铭传潜山埋忠骨.jpg"),
-                     "fallback": {"idx": 3}},
+    # 刘铭传没有介绍视频，非遗详情页中列会用这张充位 —— 放人物画像最贴题。
+    # 中列是竖长的，画像 1464x2292 正好；先前用过墓园、故居，全都是风景，缺"人"。
+    "liumingchuan": {"src": os.path.join(LM_GJ, "刘铭传.png"),
+                     "fallback": {"idx": 2}},
     "baogong": {"src": os.path.join(C, "BGGSImages", "以民为贵开仓放粮.jpg"),
                 "fallback": {"idx": 3}},
-    "luju": {"src": os.path.join(U, "Res", "Img_Xiangqing", "luju", "luju", "梁祝.png"),
-             "crop": (0.0, 0.0, 1.0, 0.72),          # 裁掉底部字幕
-             "fallback": {"idx": 1, "crop": (0.0, 0.0, 1.0, 0.72)}},
+    # 庐剧没有介绍视频，非遗详情页中列会用这张充位，所以挑最出彩的一张
+    # （原先是裁剪过的视频截图，又扁又糊）
+    "luju": {"src": os.path.join(LJ, "《孔雀东南飞之焦仲卿妻》.png"),
+             "fallback": {"idx": 1}},
     "huobihua": {"src": os.path.join(MAT, "文化馆项目资料整理", "火笔画", "火笔画申报书配套照片", "02.jpg"),
                  "fallback": {"idx": 2}},
     # 传承人页是"人"：用传承人工作照更贴切
@@ -139,18 +149,21 @@ SLIDES = {
         os.path.join(M2, "葫芦烙画", "mmexport1572247988256.jpg"),
         os.path.join(M2, "葫芦烙画", "IMG_20200520_105609.jpg"),
     ],
+    # 轮播与详情页各用各的：梁祝、双锁柜已给详情页，这里用其余舞台剧照
+    # （《汪鸿云和武克英主演的红楼梦》是白底抠图 + 人名标注，混在舞台照里不协调，不用）
     "luju": [
-        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "2016年元旦戏曲晚会《秦雪梅观画》.png"),
-        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "周总理接见庐剧演员.png"),
-        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "安徽省倒七戏剧团梁祝.png"),
-        os.path.join(MAT, "文化馆项目资料整理", "庐剧", "半把剪刀.png"),
+        os.path.join(LJ, "2016年元旦戏曲晚会《秦雪梅观画》.png"),
+        os.path.join(LJ, "周总理接见庐剧演员.png"),
+        os.path.join(LJ, "半把剪刀.png"),
+        os.path.join(LJ, "大型现代戏《村长娘子》.png"),
     ],
+    # 轮播与详情页各用各的，且彼此不重样：荷塘全景 / 故居航拍 / 人物照。
+    # 画像挪去详情页中列充位了；这里换成 Wikimedia Commons 的公有领域老照片
+    # （19 世纪原版人像，作者不详），否则整个项目的图全是风景、没有"人"。
     "liumingchuan": [
-        # 高清实拍（故居红楼门、宫保第）+ 刘铭传画像
-        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "680811d938913148a5346d661938083.jpg"),
-        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居",
-                     "刘铭传旧居 “宫保第”2  李德荣摄   13705609710_wps图片.jpg"),
-        os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事", "1 刘铭传故居", "刘铭传.png"),
+        os.path.join(LM_GJ, "刘铭传旧居 “宫保第”1  李德荣摄   13705609710_wps图片.jpg"),
+        os.path.join(LM_GJ, "肥西刘铭传故居    李德荣摄   13705609710.jpg"),
+        os.path.join(OUT_ROOT, "_external", "liumingchuan_portrait.jpg"),
     ],
     "baogong": [
         # 连环画/皮影 + 包公祠实景照（CC BY-SA 3.0，见 assets/images/CREDITS.md）
@@ -233,6 +246,13 @@ def main():
                 print(f"  ✗ detail{i} 源缺失: {s}"); missing.append((slug, f"detail{i}", s)); continue
             size, n = convert(s, os.path.join(out_dir, f"{i}.jpg"), DETAIL, crop)
             print(f"  ✓ {i}.jpg {size} {n//1024}KB  <- {os.path.basename(s)}{' (裁剪)' if crop else ''}")
+        # 清掉多余的旧详情图：条目变少时（比如庐剧从 3 张减到 2 张）旧图会留在
+        # 目录里，既占地方又容易让人以为还在用
+        for f in os.listdir(out_dir) if os.path.isdir(out_dir) else []:
+            stem, ext = os.path.splitext(f)
+            if ext.lower() == ".jpg" and stem.isdigit() and int(stem) > len(spec["details"]):
+                os.remove(os.path.join(out_dir, f))
+                print(f"  - 清掉多余旧图 {f}")
         pspec = PORTRAITS.get(slug)
         if pspec:
             ps, crop = pspec["src"], pspec.get("crop")
