@@ -3,6 +3,7 @@
 import json
 import os
 import time
+from collections import deque
 
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 from PySide6.QtGui import QImage, QPixmap, QFont, QPainter, QPen, QColor
@@ -31,6 +32,11 @@ class CameraWidget(QWidget):
     # 摄像头离线后，隔多久重建一次（毫秒）。重建 = 关掉旧线程 + 重新搜索 + 开新线程，
     # 与手动点「关闭摄像头 → 打开摄像头」完全同一条路 —— 那条路实测最可靠。
     RECOVER_INTERVAL_MS = 3000
+    # 帧率健康判据：最近 HEALTH_WINDOW_MS 内至少要有 MIN_FRAMES_IN_WINDOW 帧。
+    # 正常采集约 27fps（3 秒约 80 帧），所以这个下限宽松到不会误伤，
+    # 但足以抓住"半死"状态（大部分失败、偶尔挤出一帧）。
+    HEALTH_WINDOW_MS = 3000
+    MIN_FRAMES_IN_WINDOW = 5
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,6 +46,10 @@ class CameraWidget(QWidget):
         self._wanted = False
         self._frame_buffer = None
         self._next_try_ms = 0.0
+        self._last_frame_ms = 0.0     # 最近一次收到画面的时刻
+        self._first_frame_ms = 0.0    # 本线程第一帧的时刻（健康判据的起算点）
+        self._frame_times = deque(maxlen=200)   # 最近收到的帧的时刻，用来算帧率
+        self._recovering = False      # 已请求停止、正在等旧线程真正结束
         self._timer = QTimer(self)
 
         self._label = QLabel("摄像头未开启", self)
@@ -79,6 +89,12 @@ class CameraWidget(QWidget):
         # 打开摄像头可能要几秒（外接 USB 尤其慢），先给个提示而不是
         # 一直停在"摄像头未开启"——后者看起来像坏了，让人以为设备没接上
         self._show_placeholder(placeholder)
+        # 时间戳清零 = 看门狗先解除武装：新线程刚起来还没出帧时，
+        # 不能拿上一个线程留下的旧时间戳去判它"失联"
+        self._last_frame_ms = 0.0
+        self._first_frame_ms = 0.0
+        self._frame_times.clear()
+        self._recovering = False
         self._camera_thread = CameraThread(self._frame_buffer)
         self._camera_thread.frame_ready.connect(self._on_frame_ready)
         self._camera_thread.start()
@@ -144,7 +160,32 @@ class CameraWidget(QWidget):
         self._conf_text.raise_()
 
     def _on_frame_ready(self):
-        pass
+        """每出一帧就记时间戳：看门狗靠它算「最近这段时间出了几帧」"""
+        now = time.time() * 1000.0
+        self._last_frame_ms = now
+        if not self._first_frame_ms:
+            self._first_frame_ms = now
+        self._frame_times.append(now)
+        self._recovering = False
+
+    def _frames_in_window(self) -> int:
+        """最近一个统计窗口内收到的帧数"""
+        now = time.time() * 1000.0
+        while self._frame_times and now - self._frame_times[0] > self.HEALTH_WINDOW_MS:
+            self._frame_times.popleft()
+        return len(self._frame_times)
+
+    def _camera_unhealthy(self, now: float) -> bool:
+        """画面是不是已经不可用了
+
+        必须等"出过第一帧、且满了一个统计窗口"之后才判 ——
+        否则刚启动/刚重建时窗口里没帧，会被当成失联而立刻重启，陷入循环。
+        """
+        if not self._first_frame_ms:
+            return False
+        if now - self._first_frame_ms <= self.HEALTH_WINDOW_MS:
+            return False
+        return self._frames_in_window() < self.MIN_FRAMES_IN_WINDOW
 
     def _draw_zone(self, pixmap: QPixmap, frame_w: int, frame_h: int) -> QPixmap:
         """在预览上画出模型能看到的范围（手势交互区）
@@ -178,16 +219,44 @@ class CameraWidget(QWidget):
             return
         # 采集线程已经结束（离线后自行退出 / 一个摄像头都没找到）：
         # 用户还希望开着的话，隔一会儿重建一次——与手动"关掉再打开"同一条路
+        now = time.time() * 1000.0
         if not self._camera_thread.isRunning():
             if not self._wanted:
                 return
-            if time.time() * 1000.0 >= self._next_try_ms:
+            if now >= self._next_try_ms:
                 self._recover()
             else:
                 # 重建也没找到摄像头，正在等下一次重试——把状态说清楚，
                 # 别一直停在"正在打开…"让人以为卡住了
                 self._show_placeholder("未找到可用摄像头\n正在自动重试…")
             return
+
+        # ---- 看门狗：线程还活着，但画面已经不可用了 ----
+        #
+        # 判据是**帧率塌了**，不是"完全没帧"。
+        # 实测拔掉 USB 后摄像头常进入"半死"状态：大部分读帧失败，但偶尔挤出一帧。
+        # 那样的干扰下，"连续失败 20 次"永远攒不满、"5 秒没有新帧"也永远够不到
+        # ——两个判据都被绕过，画面却已经完全不可用了（卡顿、跳变、偏色）。
+        # 换成"最近 3 秒收到了几帧"，半死和全死都能抓到。
+        if self._camera_unhealthy(now):
+            if not self._recovering:
+                self._recovering = True
+                print("[Camera] 画面异常（最近 %d 秒只有 %d 帧），判定失联，重启采集线程"
+                      % (self.HEALTH_WINDOW_MS // 1000, self._frames_in_window()), flush=True)
+                # 只请求、不等待：线程多半正卡在驱动里，等它会卡住界面
+                self._camera_thread.request_stop()
+                # 已经决定重启了，就别再让 RECOVER_INTERVAL_MS 的冷却再拖几秒：
+                # 旧线程一结束就立刻重建
+                self._next_try_ms = 0.0
+            elif self._camera_thread.isFinished():
+                # ⚠ 必须确认旧线程**真的结束了**才能建新的。
+                # 否则两个线程同时开着同一个摄像头：画面会在两者之间来回跳
+                # （实测：预览不停在"对称"的两个视角间切换、颜色忽冷忽暖）。
+                self._recover()
+            else:
+                self._show_placeholder("摄像头已断开\n正在重启…")
+            return
+
         if not self._camera_thread.signal_ok():
             # 掉线时不要停在最后一帧（看起来像正常），明确提示正在重连
             self._show_placeholder("摄像头信号丢失\n正在自动重连…")

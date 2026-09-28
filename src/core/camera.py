@@ -407,6 +407,14 @@ class CameraThread(QThread):
         self._mutex.unlock()
         return frame
 
+    def request_stop(self):
+        """只请求停止，**不等待**。
+
+        给 UI 线程用：stop() 最多会阻塞 3 秒，放在 33ms 的界面定时器里会让界面卡住。
+        线程可能正卡在驱动调用里，所以调用方需要另外轮询 isFinished()。
+        """
+        self._running = False
+
     def stop(self):
         """请求停止并等待退出。
 

@@ -280,18 +280,34 @@ class _StubThread:
         self._fb = frame_buffer
         self.running = False
         self.stopped = False
+        self.stop_requested = False   # request_stop 只置位，不立即结束（模拟卡在驱动里）
+        self.finished = False
 
     def connect(self, *_a, **_k):
         pass
 
     def start(self):
         self.running = True
+        self.finished = False
 
     def isRunning(self):
         return self.running
 
+    def isFinished(self):
+        return self.finished
+
+    def request_stop(self):
+        self.stop_requested = True
+
+    def signal_ok(self):
+        return True
+
+    def get_frame(self):
+        return None
+
     def stop(self):
         self.running = False
+        self.finished = True
         self.stopped = True
 
     def deleteLater(self):
@@ -352,6 +368,122 @@ class TestWidgetRebuildGating(unittest.TestCase):
         t_before = self.w._next_try_ms
         self.w._recover()                        # 手工触发才会重建
         self.assertGreater(self.w._next_try_ms, t_before - 1)
+
+
+class TestStaleFrameWatchdog(unittest.TestCase):
+    """线程还活着但不出帧时，界面必须**主动**停掉它
+
+    这是实测踩到的一组症状：拔掉 USB 后 read() 卡在驱动调用里，既不返回也不报错 ——
+    signal_ok 一直是 True、线程也不退出，光看 isRunning() 根本发现不了，
+    界面就停在最后一帧上。
+
+    更隐蔽的是"重建时机"：如果不等旧线程真正结束就建新线程，
+    两个线程会同时开着同一台摄像头，画面在两者之间来回跳
+    （实测现象：预览不停在两个互为镜像的视角间切换、颜色忽冷忽暖）。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = _qt_app()
+
+    def setUp(self):
+        import src.ui.camera_widget as cw
+        self._real = cw.CameraThread
+        cw.CameraThread = _StubThread
+        self.w = cw.CameraWidget()
+        self.w._frame_buffer = _StubBuffer()
+        self.w._wanted = True
+        self.w._spawn()
+        self.th = self.w._camera_thread
+        # 武装看门狗：假装出过帧
+        self.w._on_frame_ready()
+
+    def tearDown(self):
+        import src.ui.camera_widget as cw
+        self.w._wanted = False
+        self.w._timer.stop()
+        cw.CameraThread = self._real
+
+    def _age(self):
+        """让画面看起来"帧率已经塌了"：出过第一帧、但统计窗口内一帧都没有"""
+        now = time.time() * 1000.0
+        self.w._first_frame_ms = now - self.w.HEALTH_WINDOW_MS - 500
+        self.w._frame_times.clear()
+        self.w._last_frame_ms = now - self.w.HEALTH_WINDOW_MS - 500
+
+    def _healthy(self):
+        """让画面看起来正常：窗口里塞满帧"""
+        self.w._frame_times.clear()
+        now = time.time() * 1000.0
+        for i in range(self.w.MIN_FRAMES_IN_WINDOW + 5):
+            self.w._frame_times.append(now - i * 10)
+        self.w._first_frame_ms = now - self.w.HEALTH_WINDOW_MS - 500
+        self.w._last_frame_ms = now
+
+    def test_有新帧时看门狗不动手(self):
+        self._healthy()
+        self.w._update_frame()
+        self.assertFalse(self.th.stop_requested, "画面正常时不该去停线程")
+
+    def test_长时间没新帧会请求停止(self):
+        self._age()
+        self.w._update_frame()
+        self.assertTrue(self.th.stop_requested, "看门狗应当请求停止采集线程")
+        self.assertTrue(self.w._recovering)
+
+    def test_还没出过帧时不武装看门狗(self):
+        self.w._first_frame_ms = 0.0             # 新线程刚起来、还没出帧
+        self.w._frame_times.clear()
+        self.w._update_frame()
+        self.assertFalse(self.th.stop_requested,
+                         "刚开始打开设备时不能判它失联")
+
+    def test_刚出帧还没满统计窗口时不武装看门狗(self):
+        """只出了一两帧还不够判失联——必须先攒满一个统计窗口"""
+        now = time.time() * 1000.0
+        self.w._frame_times.clear()
+        self.w._frame_times.append(now)
+        self.w._first_frame_ms = now            # 第一帧就是刚刚
+        self.w._last_frame_ms = now
+        self.w._update_frame()
+        self.assertFalse(self.th.stop_requested,
+                         "刚出第一帧就判失联会导致无限重启")
+
+    def test_半死状态也要能判出来(self):
+        """实测踩过的关键场景：大部分读帧失败、偶尔挤出一帧。
+
+        "连续失败 N 次"和"完全没帧"两个判据都会被它绕过去，
+        但画面已经完全不可用 —— 所以判据必须是帧率，而不是"有没有帧"。
+        """
+        now = time.time() * 1000.0
+        self.w._first_frame_ms = now - self.w.HEALTH_WINDOW_MS - 500
+        self.w._frame_times.clear()
+        # 4 秒前和 3.5 秒前各挤出一帧 —— 有帧，但都在统计窗口之外
+        self.w._frame_times.append(now - 4000)
+        self.w._frame_times.append(now - 3500)
+        self.w._last_frame_ms = now - 3500      # 注意：并不是"很久没帧"
+        self.w._update_frame()
+        self.assertTrue(self.th.stop_requested,
+                        "偶发的帧不该掩盖「帧率已经塌了」这个事实")
+
+    def test_旧线程没结束前绝不重建(self):
+        """这一条是"两个线程抢同一台摄像头"的防线"""
+        self._age()
+        self.w._update_frame()                   # 第一次：请求停止
+        plain = _StubThread()                    # 旧线程仍活着（卡在驱动里）
+        self.th.running, self.th.finished = True, False
+        self.th.stop = lambda: plain.stop()      # 万一被调用也保持"活着"
+        self.w._update_frame()                   # 第二次：应当只是等
+        self.assertIs(self.w._camera_thread, self.th,
+                      "旧线程还没结束就重建 = 两个线程抢同一台摄像头")
+
+    def test_旧线程结束后才重建(self):
+        self._age()
+        self.w._update_frame()
+        self.th.running, self.th.finished = False, True   # 旧线程这才会真正结束
+        self.w._update_frame()
+        self.assertIsNot(self.w._camera_thread, self.th, "旧线程结束后应当重建")
+        self.assertFalse(self.w._recovering, "重建后状态应当复位")
 
 
 if __name__ == "__main__":
