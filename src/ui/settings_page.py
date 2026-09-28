@@ -40,13 +40,21 @@ _CREDITS_HTML = """
   p  {{ margin: 2px 0 10px 0; }}
   a  {{ color: #1a6fa8; }}
 </style>
-<h3>外部素材（自由授权，需保留署名）</h3>
+<h3>外部素材（自由授权）</h3>
 <p><b>合肥包公祠内包拯像</b>（用于「包公故事」轮播图）<br/>
 作者：猫猫的日记本（Wikimedia Commons 用户）<br/>
 来源：<a href="https://commons.wikimedia.org/wiki/File:The_Memorial_Temple_of_Bao_Zheng_in_Hefei_2012-06.JPG">
 commons.wikimedia.org — The Memorial Temple of Bao Zheng in Hefei</a><br/>
-授权：<a href="https://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a><br/>
+授权：<a href="https://creativecommons.org/licenses/by-sa/3.0">CC BY-SA 3.0</a>
+（<b>本页署名即为该许可要求的署名，请勿删除</b>）<br/>
 修改：等比缩放到宽 1600px 后转存</p>
+
+<p><b>刘铭传像</b>（用于「刘铭传故事」轮播图）<br/>
+作者：不详（19 世纪原版照片，摄于 1896 年之前）<br/>
+来源：<a href="https://commons.wikimedia.org/wiki/File:劉銘傳肖像.jpg">
+commons.wikimedia.org — 劉銘傳肖像</a><br/>
+授权：<b>公有领域</b>（Public domain，已过版权保护期，无强制署名要求）<br/>
+说明：刘铭传（1836—1896），清末淮军名将、台湾首任巡抚</p>
 
 <h3>文化馆提供素材（版权归原提供方）</h3>
 <p>其余图片、二维码、3D 模型（由资料中的 FBX 转换）与介绍视频（由原始视频转码）

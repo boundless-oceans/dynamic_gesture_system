@@ -24,20 +24,29 @@ SOFTWARE.
 适用范围说明 / Scope of this license
 ======================================================================
 
-上面是未经修改的 MIT 条款。**它的适用范围仅限于本仓库中的源代码**：
+上面是未经修改的 MIT 条款。**它的适用范围仅限于本项目的自有源代码**：
 
-    main.py、src/**、tools/**、tests/**、pages/**
+    main.py、src/**、tools/**、tests/**、pages/*.html
 
-以下内容不适用 MIT，权利归各自所有者：
+以下内容**不适用** MIT，权利归各自所有者：
 
   * assets/**
       图片、3D 模型、介绍视频、二维码等，版权归文化馆原提供方所有，
       仅授权用于本展示系统。对外使用需另行取得权利人授权。
-      其中 assets/images/_external/ 下的图片来自 Wikimedia Commons
-      （CC BY-SA 3.0），署名与许可要求见 assets/images/CREDITS.md。
 
-  * pages/ 下内嵌的第三方库
-      three.js（MIT）、Leaflet（BSD-2-Clause）、GLTFLoader（MIT），
-      各自保留其原有许可与版权声明。
+      **例外**：assets/images/_external/ 下的两张图片**不受本节的限制**。
+      它们是外部自由授权素材，可按各自许可自由使用、修改与再分发，
+      授权与署名情况见 assets/images/CREDITS.md：
+        - liumingchuan_portrait.jpg   公有领域（Public domain）
+        - baogong_temple.jpg          CC BY-SA 3.0，作者：猫猫的日记本
+      CC BY-SA 3.0 不允许对作品附加更严格的条款，故此处单独列出。
+
+  * pages/ 下的第三方库文件
+      three.min.js（three.js，MIT）、leaflet.js / leaflet.css（Leaflet，
+      BSD-2-Clause）、GLTFLoader.js（three.js examples，MIT）。
+
+      这些文件**不是本项目代码**，不在上面的 MIT 授权范围内，
+      各自保留其原有许可与版权声明，见各文件头部的注释。
+      再分发时请一并保留这些声明。
 
 如需在本项目之外使用上述素材，请另行取得权利人授权。

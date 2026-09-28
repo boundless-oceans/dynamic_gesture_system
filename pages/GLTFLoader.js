@@ -1,3 +1,13 @@
+/**
+ * @license
+ * GLTFLoader — 取自 three.js r147 的 examples/jsm/loaders/GLTFLoader.js
+ * Copyright 2010-2022 Three.js Authors
+ * SPDX-License-Identifier: MIT
+ * https://github.com/mrdoob/three.js
+ *
+ * 本文件不是本项目的代码，按上游 MIT 许可原样分发；
+ * 此处补回上游文件头（打包时被去掉），声明随文件保留。
+ */
 ( function () {
 
 	class GLTFLoader extends THREE.Loader {
