@@ -284,11 +284,15 @@ class DetailPage(BasePage):
             lo.addWidget(vw)
         else:
             # 六个项目里只有两个有介绍视频。不放"暂无视频"空框，
-            # 改用传承人配图充位——保持原有三栏布局不变，同时不浪费这块面积。
+            # 改用配图充位——保持原有三栏布局不变，同时不浪费这块面积。
             p=_PA.portrait_path(self._pi)
             if p and os.path.exists(p):
                 lo.addWidget(_FitLabel(p, pad=8), stretch=1)
-                cap=QLabel("暂无介绍视频 · 图为传承人风采")
+                # 说明文字只说"暂无介绍视频"，不去描述图是什么：
+                # 这张配图有的是传承人工作照，有的是历史人物像（刘铭传）、
+                # 舞台剧照（庐剧），统称"传承人风采"既不准，又与本应用
+                # 「传承人风采」页重名，容易让人以为跳错了页。
+                cap=QLabel("暂无介绍视频")
                 cap.setAlignment(Qt.AlignCenter)
                 cap.setFont(QFont("Microsoft YaHei",10))
                 cap.setStyleSheet("background:transparent;color:#888;")
