@@ -44,9 +44,14 @@ DSTE-Net 动态手势识别桌面应用，文化馆非遗展示系统。PySide6 
 - **设置页加"图片来源"**：CC BY-SA 素材（包公祠实景照）要求署名，见 `assets/images/CREDITS.md`
 - **权重瘦身**：当前权重含 optimizer（227MB），可提取 state_dict 到 114MB（fp16 约 57MB）
 - **素材缺口**：火笔画、吴山铁字无二维码；包公仅有连环画+1 张实景照
-- **文档现状**：现行说明只有本文件与 `README.md`。早期的 `DESIGN.md` 描述的是
-  EgoGesture 83 类的旧方案（与现状全面不符），已删除（`git log -- DESIGN.md` 可查）；
-  `docs/UI_DESIGN.md` 保留但只记布局比例，过时处已在文内标注
+- **文档现状**：现行说明是本文件 + `README.md` + **`docs/MECHANISMS.md`**。
+  早期的 `DESIGN.md` 描述的是 EgoGesture 83 类的旧方案（与现状全面不符），
+  已删除（`git log -- DESIGN.md` 可查）；`docs/UI_DESIGN.md` 保留但只记布局比例，
+  过时处已在文内标注
+- **改这些地方之前先读 `docs/MECHANISMS.md`**：`src/core/camera.py`（后端选择、
+  热插拔、离线恢复）、`MainWindow._ocg`/`_on_result`（去抖/冷却/锁存）、
+  `config.IDLE_LADDER`（空闲降频）、`camera_widget._draw_zone`（交互区）。
+  那几条机制都是实测调出来的，改错会**静默失效**而不是报错
 
 ## 页面索引
 | 索引 | 页面 |
