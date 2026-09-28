@@ -1,5 +1,13 @@
 """入口"""
 import sys
+
+from src.logger import setup_logging
+
+# ⚠ 必须排在其它 src.* 之前：config 等模块在**导入那一刻**就会打印
+# （例如"[Config] 已应用本地调参…"），晚一步这些行就漏掉了。
+# 打包成 --windowed 后控制台不存在，这些输出只有靠它才留得下来。
+setup_logging()
+
 from PySide6.QtWidgets import QApplication, QMessageBox
 from src.ui.splash import create_splash
 
