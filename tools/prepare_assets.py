@@ -34,6 +34,34 @@ LM_GJ = os.path.join(LM, "1 刘铭传故居")
 THUMB = 500
 DETAIL = 1200
 
+
+def find_src(directory: str, *keywords: str) -> str:
+    """按关键词在目录里定位素材源文件。
+
+    **为什么不直接写文件名**：素材盘上这几个文件名里带着摄影者的手机号
+    （形如 `…李德荣摄   137xx…jpg`）。代码会进公开仓库，第三方的个人信息
+    不该跟着进去，所以改成按关键词匹配。关键词都挑的是**与手机号无关**的部分，
+    将来文件名里的手机号被去掉，匹配照样成立。
+
+    这是生成脚本，只在插着素材盘的机器上跑，所以：
+
+      - 目录不存在 / 找不到文件 / 匹配不唯一 —— 一律返回一个不存在的路径，
+        交给各调用点已有的"源缺失"分支统一报告
+      - **不在这里抛异常**：MAPPING / SLIDES 是模块级构造的，
+        抛异常会让脚本连启动都做不到
+      - 但"匹配不唯一"是关键词挑宽了（代码问题，不是素材缺失），额外打印出来
+    """
+    if not os.path.isdir(directory):
+        return os.path.join(directory, "【目录不存在】" + "_".join(keywords))
+    hits = [f for f in os.listdir(directory) if all(k in f for k in keywords)]
+    if len(hits) == 1:
+        return os.path.join(directory, hits[0])
+    print(f"  ✗ 源定位失败（匹配到 {len(hits)} 个）: {os.path.basename(directory)}"
+          f"  关键词={list(keywords)}")
+    for h in hits:
+        print(f"      {h}")
+    return os.path.join(directory, "【定位失败】" + "_".join(keywords))
+
 # slug -> {"thumb": 源, "details": [源...]}
 MAPPING = {
     "hulu": {
@@ -51,7 +79,7 @@ MAPPING = {
         # 只用其中一张 —— 之前两张分散在详情页和轮播里，看着像重复。
         "details": [
             os.path.join(LM, "680811d938913148a5346d661938083.jpg"),          # 宫保第红门内景
-            os.path.join(LM_GJ, "潜山埋忠骨（刘铭传墓园）李德荣摄_   13705609710.jpg"),
+            find_src(LM_GJ, "潜山埋忠骨"),                                     # 刘铭传墓园
         ],
     },
     "baogong": {
@@ -161,8 +189,9 @@ SLIDES = {
     # 画像挪去详情页中列充位了；这里换成 Wikimedia Commons 的公有领域老照片
     # （19 世纪原版人像，作者不详），否则整个项目的图全是风景、没有"人"。
     "liumingchuan": [
-        os.path.join(LM_GJ, "刘铭传旧居 “宫保第”1  李德荣摄   13705609710_wps图片.jpg"),
-        os.path.join(LM_GJ, "肥西刘铭传故居    李德荣摄   13705609710.jpg"),
+        # 引号里的 1/2 是同一场景的两次拍摄，这里取 1（详见 MAPPING 里的说明）
+        find_src(LM_GJ, "宫保第”1"),
+        find_src(LM_GJ, "肥西刘铭传故居"),
         os.path.join(OUT_ROOT, "_external", "liumingchuan_portrait.jpg"),
     ],
     "baogong": [
