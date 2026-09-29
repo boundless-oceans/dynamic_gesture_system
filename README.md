@@ -426,17 +426,55 @@ python -m unittest tests.test_gesture_gate -v    # 单个模块
 
 ## 八、打包
 
-> PyInstaller 打包**暂未执行**，以下为估算与注意事项。
+打包脚本 `tools/build_exe.py` —— **要用 `gesture` 那个 conda 环境跑**，不是平时运行程序
+用的环境（先 `conda activate gesture`，或用该环境的 `python.exe` 全路径执行）。
 
-- 体积估算：运行时依赖约 1.0GB（PySide6 + torch + OpenCV）+ 素材（图片 5MB、模型 31MB、
-  视频约 125MB）→ **约 1.3GB**
-  （注：`gesture` 环境实测 1.7GB，其中含各包的 test 套件、头文件与 pip 缓存等不会被打进产物的
-  内容；torch 装的是 `+cpu` 版，没有 CUDA 库）
-- 需一并打包：`pages/`（three.js、GLTFLoader、leaflet）、`assets/`、`weights/`
-- 需收集：QtMultimedia 插件与 FFmpeg 后端 DLL（否则视频无法播放）、QtWebEngine 资源
-- `assets/videos/`、`assets/models/`、`weights/` 均在 `.gitignore` 中，打包时需从本地目录取
+默认出**交付形态**（`--windowed`：无控制台窗口）。调试时加 `--console` 才看得到 stdout；
+但即使 windowed，诊断也不会丢 —— 全部落在 `logs/app.log`（见第六节）。
 
----
+产物与中间产物都落在**脚本顶部的 `OUT_ROOT`** 指向的目录，**仓库里不留** `build/` `dist/`：
+
+```
+<OUT_ROOT>/
+├─ 庐州非遗手势展示/            <-- 交付目录，整个拷走即可
+│   ├─ 庐州非遗手势展示.exe
+│   ├─ _internal/                   程序本体（PyInstaller 产物，别动）
+│   ├─ assets/ weights/ pages/       内容，**不打进 bundle**（见下）
+│   ├─ install.bat                  首次安装：建桌面快捷方式 + 启动程序
+│   ├─ uninstall.bat                卸载：删快捷方式 + 删整个目录
+│   ├─ setup.ps1                    上面两个脚本调用它
+│   └─ 使用说明.txt                  给运维看的（含「出问题看 logs/app.log」）
+├─ _build/                     中间产物（下划线前缀，别和交付物混）
+└─ _spec/
+```
+
+**为什么 onedir 而不是 onefile**：onefile 每次启动都要把 1.2GB 解压到 `%TEMP%`，
+做成开机自启会先黑屏十几秒；而且 PySide6 是 **LGPL v3**，onefile 下用户无法替换该库。
+
+**为什么内容不打进 bundle**：`assets/` `weights/` `pages/` 铺在 exe 旁边，
+这样换素材、换模型、改 HTML **不用重新打包**（"视频到位后直接放入即可"那条承诺靠它）。
+代码侧对应 `src/paths.py`：打包后一切从 `app_dir()` 取，而不是 `__file__`
+（后者指向只读的 `_internal/`）。
+
+**绿色部署**：不复制文件、不写注册表、不装服务、**不做开机自启**。
+"安装"只是建一个桌面快捷方式。卸载 = 删快捷方式 + 删文件夹。
+
+**实测**（2026-09，本机）：
+
+| 项 | 结果 |
+|---|---|
+| 体积 | **1.58 GB**（`_internal` 1.10 + `weights` 0.33 + `assets` 0.16）|
+| 冷启动到出画面 | 约 **10 秒** |
+| **首次**启动 | 可能 **30 秒**（文件缓存冷 + 杀毒扫描新 exe），之后就快了 |
+| 已验证 | 摄像头 / 3D 页（含 WebGL）/ 地图页（含高德瓦片）/ 权重与页面路径 / 空闲降频 |
+
+> **尚未做的**：拿到一台**没装 Python 的干净机器**上实测四件事（本机测没意义 ——
+> 环境里有全套依赖，会掩盖缺失的 DLL），以及 `install.bat` 的实跑（建快捷方式那一步）。
+>
+> 排除项写在脚本的 `EXCLUDES` 里：`onnxruntime` / `onnx` / `tensorboardx`
+> （推理那段 `import onnxruntime` 包在 `if config.USE_ONNX` 里而它是 False，
+> 但 PyInstaller 是静态分析、会照样拉进来）。
+> ⚠️ 别动 `jinja2` / `fsspec` / `sympy` / `networkx` / `mpmath` —— 那是 torch 自己的依赖。
 
 ## 九、已知限制与待办
 
@@ -448,7 +486,10 @@ python -m unittest tests.test_gesture_gate -v    # 单个模块
   对外分发前请确认素材的使用授权（见[第四节](#四素材与生成脚本)）
 - **仓库不自包含**：`weights/`、`assets/models/`、`assets/videos/` 均在 `.gitignore` 中，
   克隆下来直接跑会没有权重、没有模型、没有视频。换机器或交付时需一并拷贝这三个目录
-- **打包未做**（见[第八节](#八打包)），展台所需的开机自启与崩溃自拉起也尚未配置
+- **打包已完成**（见[第八节](#八打包)）。交付物是**整个「庐州非遗手势展示」目录**，
+  由 `tools/build_exe.py` 生成在脚本顶部的 `OUT_ROOT` 下。
+  但**尚未在干净机器上实测**（本机测会掩盖缺失的 DLL），`install.bat` 的实跑也未验证。
+  按需求**不做开机自启**（需要的话由运维手工把桌面快捷方式复制到 `shell:startup`）
 
 **功能相关**
 

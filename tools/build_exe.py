@@ -1,9 +1,12 @@
 """用 PyInstaller 打出可交付的**目录版**程序
 
-    E:\\software\\miniconda3\\envs\\gesture\\python.exe tools/build_exe.py
+    python tools/build_exe.py
 
-**必须用 gesture 环境**跑，不是 base（base 里也有依赖，那是跑程序用的）。
-产物与中间产物全落在 `F:\\非遗资料\\final_test\\`，仓库里不留 build/dist。
+**必须用 `gesture` 那个 conda 环境跑**，不是平时运行程序用的环境
+（先 `conda activate gesture`，或用该环境 `python.exe` 的全路径执行）。
+
+产物与中间产物都落在下面 `OUT_ROOT` 指向的目录，**仓库里不留** build/dist。
+`OUT_ROOT` 是本机约定（交付时把那个目录整个拷走），换机器按需改这一行即可。
 
 ## 为什么是 onedir 而不是 onefile
 
@@ -38,6 +41,8 @@ for _s in (sys.stdout, sys.stderr):
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# 构建产物落在这里。**这是本机约定**（交付时把 OUT_ROOT/<APP_NAME> 整个拷走），
+# 换一台机器打包就改这一行 —— 其余代码都不依赖具体位置。
 OUT_ROOT = r"F:\非遗资料\final_test"
 APP_NAME = "庐州非遗手势展示"
 ENTRY = os.path.join(REPO, "main.py")
@@ -45,6 +50,10 @@ ICON = os.path.join(REPO, "assets", "app_icon.ico")
 
 # 铺在 exe 旁边的"内容"，不打进 bundle
 CONTENT_DIRS = ["assets", "weights", "pages"]
+
+# 首次安装脚本（只建桌面快捷方式，**不做开机自启**）。源码在版本库里，构建时拷到 exe 旁边，
+# 操作员解压后双击「首次安装.bat」即可。两个文件都刻意只用 ASCII —— 见其文件头。
+INSTALLER_DIR = os.path.join(REPO, "tools", "installer")
 
 # 环境里装了但运行期用不到的包。排除它们能砍体积，也少一堆无谓的 hook。
 #
@@ -67,20 +76,22 @@ def _rm(path: str) -> None:
 
 def build(console: bool = False, skip_content: bool = False,
           refresh_content: bool = False) -> str:
-    dist = os.path.join(OUT_ROOT, "dist")
-    work = os.path.join(OUT_ROOT, "build")
-    specdir = os.path.join(OUT_ROOT, "spec")
+    # 交付目录**直接**落在 OUT_ROOT 下（不再套一层 dist/），这样交付时一眼能看到；
+    # 中间产物用下划线前缀区分，别和交付物混在一起。
+    dist = OUT_ROOT
+    work = os.path.join(OUT_ROOT, "_build")
+    specdir = os.path.join(OUT_ROOT, "_spec")
 
     if not os.path.exists(ICON):
         sys.exit("图标不存在：%s\n先跑 python tools/make_icon.py" % ICON)
 
-    # 只清 PyInstaller 自己的产物（_internal/ 与 exe），**保留内容目录** ——
-    # 否则每次重建都要重拷 500MB 的 assets/weights。
-    # 之所以要清：增量构建有时会留下上一次的 DLL，打出来的包"看着是新的、
-    # 其实混着旧的"，这种最难查。
+    # 整个产物目录删掉重来 —— 交付物必须是"从零生成"的，不能混进上次的残留
+    # （调试时的 stdout 文件、logs/、旧 exe……）。
+    # 代价是每次重建都要重拷 assets/weights，但实测只有 **6.3 秒**，
+    # 不值得为省这点时间留下"看着是新的、其实混着旧的"的风险。
     app_dir = os.path.join(dist, APP_NAME)
-    _rm(os.path.join(app_dir, "_internal"))
-    _rm(os.path.join(app_dir, APP_NAME + ".exe"))
+    print("[build] 清掉旧产物目录：%s" % app_dir)
+    _rm(app_dir)
     _rm(work)
 
     cmd = [
@@ -112,7 +123,20 @@ def build(console: bool = False, skip_content: bool = False,
         print("[build] --skip-content：跳过拷贝内容目录")
     else:
         copy_content(app_dir, force=refresh_content)
+    copy_installer(app_dir)
     return app_dir
+
+
+def copy_installer(app_dir: str) -> None:
+    """把首次安装脚本拷到 exe 旁边（操作员解压后双击那个 .bat）"""
+    if not os.path.isdir(INSTALLER_DIR):
+        print("[installer] ✗ 找不到 %s，跳过" % INSTALLER_DIR)
+        return
+    for name in sorted(os.listdir(INSTALLER_DIR)):
+        src = os.path.join(INSTALLER_DIR, name)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(app_dir, name))
+            print("  ✓ %s" % name)
 
 
 def copy_content(app_dir: str, force: bool = False) -> None:
