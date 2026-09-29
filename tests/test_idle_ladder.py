@@ -38,7 +38,7 @@ class _LadderTestBase(unittest.TestCase):
             "IDLE_LADDER_ENABLED": getattr(config, "IDLE_LADDER_ENABLED", True),
         }
         if not self.USE_SHIPPED_LADDER:
-            config.IDLE_LADDER = [(0, 20), (10000, 300), (60000, 1000)]
+            config.IDLE_LADDER = [(0, 20), (10000, 350), (60000, 1000)]
         config.IDLE_LADDER_ENABLED = True
         # 不启动线程：QThread 对象可以直接构造，只是不 start()
         self.it = InferenceThread(None, _StubRecognizer())
@@ -74,7 +74,7 @@ class TestLadderSteps(_LadderTestBase):
     def test_空闲10秒进第二档(self):
         self._idle(10000)
         self.assertEqual(self.it.ladder_step(), 1)
-        self.assertEqual(self.it.interval_ms(1), 300)
+        self.assertEqual(self.it.interval_ms(1), 350)
 
     def test_空闲60秒进最深档(self):
         self._idle(60000)
