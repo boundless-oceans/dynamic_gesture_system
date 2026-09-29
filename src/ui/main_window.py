@@ -118,9 +118,12 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        # 松手判定：即时置信低于显示门槛 → 解锁所有动作，并重置去抖
+        # 松手判定：即时置信低于「松手门槛」→ 解锁所有动作，并重置去抖
         # （要求重新做出手势才能再触发，避免用残留的平滑结果重复触发）
-        if dc < config.DISPLAY_CONFIDENCE:
+        # ⚠ 用的是独立的 RELEASE_CONFIDENCE，**不是** DISPLAY_CONFIDENCE ——
+        # 显示门槛按观感调（现在为了不闪，它比松手门槛高），而松手门槛是防误触发的
+        # 安全线；两者联动的话，调观感会悄悄削弱防护。
+        if dc < config.RELEASE_CONFIDENCE:
             self._locks.clear()
             self._lg=None; self._gc=0
         # "已执行"提示优先显示

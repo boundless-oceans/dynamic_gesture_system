@@ -129,6 +129,7 @@ class _Base(unittest.TestCase):
         self._saved = {k: getattr(config, k) for k in
                        ("CONSISTENCY_COUNT", "ACTION_COOLDOWN_MS", "MAX_LOCK_MS",
                         "CONFIDENCE_THRESHOLD", "DISPLAY_CONFIDENCE",
+                        "DISPLAY_SWITCH_CONFIDENCE", "RELEASE_CONFIDENCE",
                         "SEEK_STEP_MS", "TOAST_MS")}
         config.CONSISTENCY_COUNT = 2
         # 冷却与锁存上限都跟随出厂值，不写死：这些用例要验证"按出厂参数，
@@ -272,6 +273,26 @@ class TestLatchRelease(_Base):
         self.h.on_result({"gesture": "6", "confidence": 0.99,
                           "raw_gesture": "6", "raw_confidence": 0.90})
         self.assertEqual(self.h._locks, locks, "高置信度不应清锁")
+
+    def test_松手用的是独立门槛而不是显示门槛(self):
+        """即时置信度落在两个门槛**之间**时，不该判为松手。
+
+        这两条线曾经共用一个常量（`DISPLAY_CONFIDENCE`）。2026-09 为了治悬浮窗
+        乱闪把显示门槛抬到了 0.6；如果"松手"还跟着它走，访客仍在做手势时就会
+        提前清锁 —— 那是**悄悄削弱防误触发**，而且不会报任何错。
+        所以拆成了两条线，这条用例守住它们不再联动。
+        """
+        self.assertLess(config.RELEASE_CONFIDENCE, config.DISPLAY_CONFIDENCE,
+                        "前提：松手门槛低于显示门槛，本用例才有区分度")
+        self.h.fire("swipe_right")
+        locks = dict(self.h._locks)
+        mid = (config.RELEASE_CONFIDENCE + config.DISPLAY_CONFIDENCE) / 2
+        self.h.on_result({"gesture": "6", "confidence": 0.99,
+                          "raw_gesture": "6", "raw_confidence": mid})
+        self.assertEqual(self.h._locks, locks,
+                         "raw=%.2f 高于松手门槛(%.2f)，不该清锁 —— "
+                         "清了就说明又在拿显示门槛当松手判据"
+                         % (mid, config.RELEASE_CONFIDENCE))
 
 
 class TestTriggerThreshold(_Base):

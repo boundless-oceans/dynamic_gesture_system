@@ -86,7 +86,7 @@
 - **显示与触发分离**：显示用即时结果（跟手），触发用平滑结果（稳定）
 - **去抖**：连续 2 次识别出同一动作才触发
 - **冷却**：触发一次动作后 1.15s 内不响应
-- **锁存 + 松手复位**：同一动作触发后锁定，需"松手"（置信度掉下显示门槛）才能再次触发，
+- **锁存 + 松手复位**：同一动作触发后锁定，需"松手"（置信度掉下**松手门槛** `RELEASE_CONFIDENCE`）才能再次触发，
   杜绝"举起不放连续翻页"。**锁存跟着"手"走、不跟着页面走**——换页时不清锁，
   否则用户手还停在触发姿势上，残留手势会在新页面上再触发一次
 - **锁存兜底 3.5s**：万一置信度一直不降（慢松手），超时自动解锁，避免卡死
@@ -303,8 +303,10 @@ IDLE_LADDER = [
 > 对"有人走过"则不成立 —— 后者要靠运动面积过滤，见
 > [防误触](#防误触的三层闸门)一节。
 
-> ⚠️ 判据必须用 `CONFIDENCE_THRESHOLD`(0.8)，**不能用 `DISPLAY_CONFIDENCE`(0.35)**——
-> 按 0.35 判，空场景有 4%~52% 的采样会被误认成"有手势"，空闲计时永远清零、降频永不触发。
+> ⚠️ 判据必须用 `CONFIDENCE_THRESHOLD`(0.8)，**不能用显示门槛**。显示门槛 2026-09 为了
+> 少闪已从 0.35 抬到 0.6，但**理由没变**：按 0.35 判，空场景有 4%~52% 的采样被误认成
+> "有手势"；按 0.6 判，**有人走路时仍有 27.6% 达标**，空闲计时照样被反复清零。
+> 判据要的是"**有人真在做手势**"，这个信号只有触发门槛量得出来。
 
 **为什么最深只到 1s**：降得越深，越容易漏掉"访客走过来做的第一个手势"。空闲间隔 1s 时，
 一个 1 秒长的手势必然被覆盖；到 5s 就只剩约 20% 命中率。空馆本身没人在乎，但
@@ -373,8 +375,9 @@ IDLE_LADDER = [
 | `SMOOTH_FRAMES` | 触发判定用最近几次结果平滑 | 2 |
 | `CONSISTENCY_COUNT` | 连续几次相同才触发 | 2 |
 | `CONFIDENCE_THRESHOLD` | 触发所需置信度 | **0.8** |
-| `DISPLAY_CONFIDENCE` | 悬浮窗显示门槛（低于显示"无手势"）| 0.35 |
-| `DISPLAY_HOLD_MS` / `DISPLAY_SWITCH_CONFIDENCE` | 显示保持时长 / 抢显示所需置信度 | 1000ms / 0.6 |
+| `DISPLAY_CONFIDENCE` | 悬浮窗显示门槛（低于显示"无手势"）| **0.6** |
+| `DISPLAY_HOLD_MS` / `DISPLAY_SWITCH_CONFIDENCE` | 显示保持时长 / 抢显示所需置信度 | 1000ms / **0.8** |
+| `RELEASE_CONFIDENCE` | **松手门槛**：即时置信低于它就清锁 + 重置去抖 | 0.35（**刻意与显示门槛独立**）|
 | `ACTION_COOLDOWN_MS` | 触发后冷却 | **1150ms** |
 | `MAX_LOCK_MS` | 锁存兜底时长（超时自动解锁）| **3500ms** |
 | `SEEK_STEP_MS` | 视频快进/快退步长 | 30000 |
@@ -389,7 +392,8 @@ IDLE_LADDER = [
 
 | 可在界面调整 | 只能改代码 |
 |---|---|
-| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`MAX_LOCK_MS`、`DISPLAY_HOLD_MS` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS`、`IDLE_LADDER` |
+| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`MAX_LOCK_MS`、`DISPLAY_HOLD_MS` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS`、`IDLE_LADDER`、<br>`RELEASE_CONFIDENCE`（**刻意不开给现场**：它是防误触发的安全线，调坏只会让
+"该松手时不松手"，不如不给这个旋钮）|
 
 界面改动**默认只临时生效**，点「保存为默认」才写入 `config_local.json`（已 gitignore）——
 避免观众误拖后展台参数被永久改坏。该文件被写坏时数值会被夹到合法区间、类型不符则忽略。

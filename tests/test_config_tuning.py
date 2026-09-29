@@ -40,6 +40,28 @@ class TestTunableSpec(unittest.TestCase):
         self.assertNotIn("SMOOTH_FRAMES", [s["key"] for s in config.TUNABLE])
 
 
+class TestThresholdRelations(unittest.TestCase):
+    """几条门槛之间的**关系**必须成立 —— 它们各自单独看都是合法值，
+    但组合起来会让某个机制静默失效。"""
+
+    def test_切换门槛必须高于显示门槛(self):
+        """否则任何"够显示"的结果都能立刻抢走当前显示，悬浮窗的标签会一直换来换去。
+
+        （2026-09 之前两者都是 0.6，就是这个毛病。）
+        """
+        self.assertGreater(config.DISPLAY_SWITCH_CONFIDENCE,
+                           config.DISPLAY_CONFIDENCE,
+                           "切换门槛不高于显示门槛 → 标签会被频繁抢走")
+
+    def test_松手门槛低于显示门槛(self):
+        """松手是"访客还在不在做手势"的宽松判断，显示是"敢不敢报出来"的严格判断。
+
+        松手门槛要是反超显示门槛，就会出现"够显示却不算松手"的错乱组合。
+        （两条线刻意独立，但相对大小仍有意义。）
+        """
+        self.assertLess(config.RELEASE_CONFIDENCE, config.DISPLAY_CONFIDENCE)
+
+
 class TestLocalOverride(unittest.TestCase):
 
     def setUp(self):
