@@ -45,7 +45,9 @@ MAX_BYTES = 1 * 1024 * 1024
 BACKUP_COUNT = 3
 
 _FORMAT = "[%(asctime)s] %(levelname)-7s %(message)s"
-_formatter = logging.Formatter(_FORMAT, datefmt="%H:%M:%S")
+# 必须带日期：轮转能留十来天的条目，只有时分秒的话跨天就分不清
+# 一条是今天的还是上周的（实际翻日志时踩到过）
+_formatter = logging.Formatter(_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
 
 _logger = logging.getLogger("gesture")
 _logger.setLevel(logging.DEBUG)
@@ -59,28 +61,42 @@ _installed = False
 class _Tee:
     """把 write() 同时送到日志文件和原始终端流。
 
-    两个 print 兼容点，都是为了"打包后也能正常跑"：
+    三个 print 兼容点，都是为了"打包后也能正常跑"：
 
       * **原流可能是 None** —— windowed 包没有控制台，`sys.stdout` 就是 None。
         这时只写文件，绝不能让 print 抛异常。
       * **防重入** —— 日志本身出错时 `logging` 会往 stderr 写错误信息，而 stderr
         又指向本对象，会无限递归。用标志位挡掉。
+      * **攒到换行才记一条** —— 一次 `write()` 不等于一行！CPython 的
+        `print("a:", b)` 会分**多次** write（参数之间各写一次），
+        按 write 记会让一行被拆成好几条，而且**续行丢掉时间戳和级别**：
+
+            [22:48:38] INFO    [Camera] 索引
+            [22:48:38] INFO    2
+
+        所以这里按行缓冲，只在遇到 `\\n` 时落一条。
     """
 
     def __init__(self, original, level: int):
         self._original = original
         self._level = level
         self._busy = False
+        self._buf = ""          # 尚未见到换行的残句
+
+    def _emit(self, line: str) -> None:
+        """落一条完整记录。纯空行/纯空白不记。"""
+        if line.strip():
+            _logger.log(self._level, line)
 
     def write(self, text: str) -> int:
         if self._busy:
             return len(text)
         self._busy = True
         try:
-            # rstrip：print 自带换行，日志里每条自己成行；纯空行不记
-            msg = text.rstrip()
-            if msg:
-                _logger.log(self._level, msg)
+            self._buf += text
+            while "\n" in self._buf:
+                line, self._buf = self._buf.split("\n", 1)
+                self._emit(line)
             if self._original is not None:
                 self._original.write(text)
                 if text.endswith("\n"):
@@ -96,6 +112,14 @@ class _Tee:
             self.write(line)
 
     def flush(self) -> None:
+        # 把没有换行的残句也交出去，否则 `print(x, end="")` 的内容会一直
+        # 卡在缓冲里、永远不进日志（静默丢东西，正是这个模块最该避免的）
+        if self._buf:
+            try:
+                self._emit(self._buf)
+            except Exception:
+                pass
+            self._buf = ""
         if self._original is not None:
             try:
                 self._original.flush()

@@ -106,11 +106,32 @@ class TestPrintRedirection(_LoggingTestCase):
         print("  ")
         self.assertEqual(self._read().count("\n"), 1, "空行被记进日志了")
 
-    def test_日志档里带时间戳(self):
+    def test_每条都带日期和时刻(self):
+        """轮转能留十来天，只有时分秒的话跨天就分不清（翻日志时踩到过）"""
         self._install()
         print("[Main] 要带时间")
         line = [l for l in self._read().splitlines() if "要带时间" in l][0]
-        self.assertRegex(line, r"^\[\d{2}:\d{2}:\d{2}\]")
+        self.assertRegex(line, r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]")
+
+    def test_多参数_print_只记一条(self):
+        """`print("a:", b)` 会分多次 write —— 不能拆成几条，更不能丢前缀。
+
+        这是实际踩到的：只有时分秒的那版日志里出现过
+            [19:17:25] INFO    is_frozen:
+            [19:17:25] INFO    False
+        """
+        self._install()
+        print("[Camera] 索引", 2)
+        log = self._read()
+        self.assertIn("[Camera] 索引 2", log, "被拆行或丢了前缀")
+        self.assertEqual(log.count("索引"), 1, "一行被记成了多条")
+
+    def test_不带换行的残句在_flush_时不丢(self):
+        """`print(x, end="")` 的内容不能一直卡在缓冲里"""
+        self._install()
+        sys.stdout.write("没有换行的残句")
+        sys.stdout.flush()
+        self.assertIn("没有换行的残句", self._read())
 
 
 class TestInstallIsIdempotent(_LoggingTestCase):
