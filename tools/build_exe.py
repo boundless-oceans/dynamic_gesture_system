@@ -128,15 +128,31 @@ def build(console: bool = False, skip_content: bool = False,
 
 
 def copy_installer(app_dir: str) -> None:
-    """把首次安装脚本拷到 exe 旁边（操作员解压后双击那个 .bat）"""
+    """把首次安装脚本拷到 exe 旁边（操作员解压后双击那个 .bat）
+
+    文本文件**统一转成 CRLF**：交付物是 Windows 上的东西，该用 Windows 的换行惯例。
+    这件事放在这里做，而不是指望仓库里恰好是什么 —— git 的 autocrlf 会按检出时的
+    设置改变工作区的换行，靠它不可靠。（BOM 原样保留：`setup.ps1` 与 `使用说明.txt`
+    靠它才能被 PowerShell 5.1 / 记事本正确读出中文。）
+    """
     if not os.path.isdir(INSTALLER_DIR):
         print("[installer] ✗ 找不到 %s，跳过" % INSTALLER_DIR)
         return
     for name in sorted(os.listdir(INSTALLER_DIR)):
         src = os.path.join(INSTALLER_DIR, name)
-        if os.path.isfile(src):
-            shutil.copy2(src, os.path.join(app_dir, name))
-            print("  ✓ %s" % name)
+        if not os.path.isfile(src):
+            continue
+        dst = os.path.join(app_dir, name)
+        if name.lower().endswith((".bat", ".cmd", ".ps1", ".txt")):
+            with open(src, "rb") as f:
+                raw = f.read()
+            # 先归一成 LF 再统一变 CRLF，避免把已有的 CRLF 变成 CRCRLF
+            raw = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+            with open(dst, "wb") as f:
+                f.write(raw)
+        else:
+            shutil.copy2(src, dst)
+        print("  ✓ %s" % name)
 
 
 def copy_content(app_dir: str, force: bool = False) -> None:
