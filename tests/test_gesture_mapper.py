@@ -58,11 +58,21 @@ class TestMapping(unittest.TestCase):
         self.assertEqual(index_to_control(2), "click")         # G01 单击
         self.assertEqual(index_to_control(8), "zoom_in")       # G07 张开两次
         self.assertEqual(index_to_control(12), "zoom_out")     # G11 缩小
-        self.assertEqual(index_to_control(9), "circle")        # G08 双击
+        self.assertEqual(index_to_control(1), "circle")        # B0B 双指指向
 
-    def test_偏弱类别刻意不绑定(self):
-        """B0A/B0B/G02/G09/G10 实测偏弱或易混，不绑定 → 误判也不会产生动作"""
-        for idx in (0, 1, 3, 10, 11):
+    def test_偏弱与易混类别刻意不绑定(self):
+        """不绑定的理由**不是同一条**，逐条都是实测结论（服务器逐类准确率）：
+
+        - **G08 双击 0.577 / G09 双指双击 0.481** —— 就是弱，不该绑
+        - **B0A 单指指向 0.973** —— 准确率很高，但"在镜头前走路"时被误认
+          **24.1%**，是走路最易被认成的类；而且"指着屏幕"是访客的自然动作
+        - **G02 双指点击 0.750** —— 属"点击族"，与单击 G01 只差手指数量，易互混
+
+        ⚠️ **G10 放大（0.942）也在这个列表里，但它的依据已经不成立了** ——
+        当年是按"G10 偏弱"排除的，现测它其实是强类，比在用的 G07（0.904）
+        还准。本次只按需求改双击/门槛，**没有顺手动它**，留作待办。
+        """
+        for idx in (0, 3, 9, 10, 11):
             self.assertIsNone(index_to_control(idx), f"索引 {idx} 不应绑定控制手势")
 
     def test_越界返回None(self):
