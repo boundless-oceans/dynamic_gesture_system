@@ -60,6 +60,21 @@ class _Calls:
         return [c[0] for c in self.calls]
 
 
+class _FakeIt:
+    """推理线程的桩。
+
+    闸门放行动作时会调 `mark_active()` 通知它"有人在用"—— 那是空闲降频的判据
+    （见 docs/MECHANISMS.md §2.2）。这条判据**失效方向是危险的**（漏调就一直降频、
+    访客手势变迟钝，还不报错），所以桩必须能数出调用次数。
+    """
+
+    def __init__(self):
+        self.active_calls = 0
+
+    def mark_active(self):
+        self.active_calls += 1
+
+
 class _Harness:
     """_ocg / _on_result 的最小运行环境"""
 
@@ -83,6 +98,8 @@ class _Harness:
         self._disp_conf = 0.0
         self._disp_ts = 0.0
         self.detail_arg = "unset"
+        # 动作执行时要通知的推理线程桩（空闲降频判据）
+        self.it = _FakeIt()
 
     @property
     def stack(self):
@@ -293,6 +310,38 @@ class TestLatchRelease(_Base):
                          "raw=%.2f 高于松手门槛(%.2f)，不该清锁 —— "
                          "清了就说明又在拿显示门槛当松手判据"
                          % (mid, config.RELEASE_CONFIDENCE))
+
+
+class TestActiveNotification(_Base):
+    """动作真的执行时，必须通知推理线程"有人在用" —— 那是空闲降频的判据。
+
+    ⚠ 这条判据的**失效方向是危险的**：漏调的话系统会永远认为空闲 → 永远降频 →
+    访客手势变迟钝（最多多等 1s），而且**不报任何错**。所以单独守住。
+    （判据从"模型输出高置信手势"改成"执行了动作"，就是因为前者会被路人的
+    高分样本反复清零 —— 见 docs/MECHANISMS.md §2.2。）
+    """
+
+    def test_动作执行时通知活跃(self):
+        before = self.h.it.active_calls
+        self.h.fire("swipe_right")
+        self.assertEqual(self.h.it.active_calls, before + 1,
+                         "动作执行了却没通知推理线程 → 空闲计时不被清零 → 会一直降频")
+
+    def test_被闸门挡下时不算活跃(self):
+        """只有"真的执行了"才算。被冷却/去抖/锁存挡下的不是有效操作。"""
+        self.h.fire("swipe_right")
+        n = self.h.it.active_calls
+        self.h.ocg("swipe_right")          # 同动作，会被锁存挡住
+        self.assertEqual(self.h.it.active_calls, n,
+                         "被闸门挡下的动作不该算活跃（否则路人抖动也会被当成有人用）")
+
+    def test_去抖未满时不算活跃(self):
+        """第一次识别还不够触发，不该清空空闲计时"""
+        self.h._lg = None
+        self.h._gc = 0
+        n = self.h.it.active_calls
+        self.h.ocg("swipe_right")
+        self.assertEqual(self.h.it.active_calls, n, "去抖未满就通知活跃了")
 
 
 class TestTriggerThreshold(_Base):

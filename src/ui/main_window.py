@@ -164,6 +164,11 @@ class MainWindow(QMainWindow):
         self._gc=0
         self._locks[g] = now
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+        # 到这里三道闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
+        # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
+        # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
+        # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
+        self.it.mark_active()
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
         # "已执行"提示（立即显示，约 0.8s 后恢复）；视频页的左/右实际是快退/快进
         label = CONTROL_CN.get(g, g)
