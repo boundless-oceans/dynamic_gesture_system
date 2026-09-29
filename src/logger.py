@@ -32,7 +32,11 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+from src import paths
+
+# 走 paths.data_dir()：日志是**可写数据**，打包后绝不能写进只读的 _internal/
+# （onefile 下那个目录退出即删，日志会整个丢掉）
+LOG_DIR = os.path.join(paths.data_dir(), "logs")
 LOG_PATH = os.path.join(LOG_DIR, "app.log")
 
 # 单个文件 1MB、留 3 份备份，总量封顶约 4MB。

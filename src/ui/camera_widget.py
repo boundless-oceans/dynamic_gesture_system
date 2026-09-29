@@ -1,7 +1,6 @@
 """摄像头预览组件"""
 
 import json
-import os
 import time
 from collections import deque
 
@@ -13,10 +12,11 @@ from src.core.camera import CameraThread
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import model_view_rect
 from src import config
+from src import paths
 
 
 def _load_labels():
-    path = os.path.join(os.path.dirname(__file__), "../../assets/gestures.json")
+    path = paths.resource_path("assets", "gestures.json")
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)

@@ -7,6 +7,8 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtCore import QUrl, Qt, Signal
 from PySide6.QtGui import QFont
 
+from src import paths
+
 
 class _LogPage(QWebEnginePage):
     """把网页里的 console 与报错转发到终端，便于排查 3D 加载问题"""
@@ -29,7 +31,7 @@ class ViewerPage(QWidget):
 
         self.web = QWebEngineView()
         self.web.setPage(_LogPage(QWebEngineProfile.defaultProfile(), self.web))
-        html_path = os.path.join(os.path.dirname(__file__), "../../pages/viewer.html")
+        html_path = paths.resource_path("pages", "viewer.html")
         # 带版本号，避免 WebEngine 缓存旧的本地页面（改了 viewer.html 不必清缓存）
         url = QUrl.fromLocalFile(os.path.abspath(html_path))
         try:

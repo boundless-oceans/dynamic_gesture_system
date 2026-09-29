@@ -10,11 +10,12 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from src.ui.base_page import BasePage
 from src.core import project_assets as _PA
 from src import config
+from src import paths
 
 def _load_inheritors() -> list:
     """读取 assets/inheritors.json（传承人页数据）"""
     import json
-    path = os.path.join(os.path.dirname(__file__), "../../assets/inheritors.json")
+    path = paths.resource_path("assets", "inheritors.json")
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f).get("items", [])

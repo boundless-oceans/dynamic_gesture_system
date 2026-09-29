@@ -1,11 +1,12 @@
 """非遗项目数据加载"""
 
 import json
-import os
+
+from src import paths
 
 
 def _load():
-    path = os.path.join(os.path.dirname(__file__), "../../assets/projects.json")
+    path = paths.resource_path("assets", "projects.json")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     return data["items"]

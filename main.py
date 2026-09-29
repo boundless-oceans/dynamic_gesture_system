@@ -9,12 +9,19 @@ from src.logger import setup_logging
 setup_logging()
 
 from PySide6.QtWidgets import QApplication, QMessageBox
+from src import paths
 from src.ui.splash import create_splash
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     splash = create_splash()
     app.processEvents()
+
+    # 数据目录写不进去的话，日志和「保存为默认」的现场调参都会**静默失效** ——
+    # 而那种情况下日志本身也建不出来，所以弹窗是唯一的告知途径，不能只打一行日志
+    problem = paths.check_writable()
+    if problem:
+        QMessageBox.warning(None, "数据目录不可写", problem)
 
     from src.ui.main_window import MainWindow
     win = MainWindow()

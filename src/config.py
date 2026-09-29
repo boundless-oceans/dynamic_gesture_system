@@ -3,8 +3,12 @@
 import json
 import os
 
+from src import paths
+
 # ---- 项目路径 ----
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 走 paths.app_dir() 而不是从 __file__ 推算：打包后 __file__ 指向只读的
+# _internal/，内容文件（assets/ weights/）其实铺在 exe 旁边。详见 src/paths.py
+ROOT_DIR = paths.app_dir()
 
 # ---- 模型 ----
 # 权重文件路径（IPN Hand 预训练模型）

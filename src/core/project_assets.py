@@ -5,7 +5,10 @@ slug 顺序与 assets/projects.json 的项目顺序一一对应，
 """
 import os
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src import paths
+
+# 内容目录铺在 exe 旁边，不在 bundle 里（见 src/paths.py）
+ROOT = paths.app_dir()
 IMAGES_DIR = os.path.join(ROOT, "assets", "images")
 MODELS_DIR = os.path.join(ROOT, "assets", "models")
 VIDEOS_DIR = os.path.join(ROOT, "assets", "videos")

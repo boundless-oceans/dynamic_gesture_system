@@ -5,6 +5,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QFont
 from src.ui.base_page import BasePage
+from src import paths
 
 _BTN_SEL="QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:25px;}QPushButton:hover{background:#fff;}"
 
@@ -18,7 +19,7 @@ class MapPage(BasePage):
         layout.setContentsMargins(0, 0, 0, 0)
         self.web = QWebEngineView()
         self.web.settings().setAttribute(self.web.settings().WebAttribute.LocalContentCanAccessRemoteUrls, True)
-        html = os.path.join(os.path.dirname(__file__), "../../pages/map.html")
+        html = paths.resource_path("pages", "map.html")
         self.web.load(QUrl.fromLocalFile(os.path.abspath(html)))
         layout.addWidget(self.web)
         bl = QHBoxLayout(); bl.addStretch()
