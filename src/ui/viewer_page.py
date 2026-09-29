@@ -1,19 +1,13 @@
 """3D 交互查看页"""
 
-import os
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
-from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtWebEngineCore import QWebEngineProfile
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
 from src import paths
-
-
-class _LogPage(QWebEnginePage):
-    """把网页里的 console 与报错转发到终端，便于排查 3D 加载问题"""
-    def javaScriptConsoleMessage(self, level, msg, line, src):
-        print(f"[JS] {msg}  ({src}:{line})", flush=True)
+from src.ui.web_util import LogPage, local_url
 
 _BACK_SEL = "QPushButton{background:rgba(255,255,255,0.95);border:3px solid #ffb300;border-radius:30px;}QPushButton:hover{background:#fff;}"
 
@@ -30,14 +24,9 @@ class ViewerPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.web = QWebEngineView()
-        self.web.setPage(_LogPage(QWebEngineProfile.defaultProfile(), self.web))
+        self.web.setPage(LogPage(QWebEngineProfile.defaultProfile(), self.web))
         html_path = paths.resource_path("pages", "viewer.html")
-        # 带版本号，避免 WebEngine 缓存旧的本地页面（改了 viewer.html 不必清缓存）
-        url = QUrl.fromLocalFile(os.path.abspath(html_path))
-        try:
-            url.setQuery("v=%d" % int(os.path.getmtime(html_path)))
-        except OSError:
-            pass
+        url = local_url(html_path)      # 带版本号，改完 HTML 不必清缓存
         print(f"[Viewer] loading {url.toString()}", flush=True)
         self.web.load(url)
         self.web.loadFinished.connect(self._on_loaded)
