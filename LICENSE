@@ -34,6 +34,9 @@ SOFTWARE.
       图片、3D 模型、介绍视频、二维码等，版权归文化馆原提供方所有，
       仅授权用于本展示系统。对外使用需另行取得权利人授权。
 
+      **例外**：assets/app_icon.ico 是本项目自己生成的程序图标
+      （由 tools/make_icon.py 生成，不含第三方素材），属于上面的 MIT 范围。
+
       **例外**：assets/images/_external/ 下的两张图片**不受本节的限制**。
       它们是外部自由授权素材，可按各自许可自由使用、修改与再分发，
       授权与署名情况见 assets/images/CREDITS.md：
