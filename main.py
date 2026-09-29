@@ -8,12 +8,19 @@ from src.logger import setup_logging
 # 打包成 --windowed 后控制台不存在，这些输出只有靠它才留得下来。
 setup_logging()
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 from src import paths
 from src.ui.splash import create_splash
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # 运行时窗口/任务栏图标。exe 文件本身的图标由 PyInstaller 的 --icon 指定，
+    # 但那**只管文件**：不设这个，任务栏和窗口上挂的还是默认的 Qt/Python 图标。
+    # 设成应用级默认，所有窗口（含启动画面）都会继承。
+    app.setWindowIcon(QIcon(paths.resource_path("assets", "app_icon.ico")))
+
     splash = create_splash()
     app.processEvents()
 
