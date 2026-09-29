@@ -118,9 +118,12 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        # 松手判定：即时置信低于显示门槛 → 解锁所有动作，并重置去抖
+        # 松手判定：即时置信低于「松手门槛」→ 解锁所有动作，并重置去抖
         # （要求重新做出手势才能再触发，避免用残留的平滑结果重复触发）
-        if dc < config.DISPLAY_CONFIDENCE:
+        # ⚠ 用的是独立的 RELEASE_CONFIDENCE，**不是** DISPLAY_CONFIDENCE ——
+        # 显示门槛按观感调（现在为了不闪，它比松手门槛高），而松手门槛是防误触发的
+        # 安全线；两者联动的话，调观感会悄悄削弱防护。
+        if dc < config.RELEASE_CONFIDENCE:
             self._locks.clear()
             self._lg=None; self._gc=0
         # "已执行"提示优先显示
@@ -161,6 +164,11 @@ class MainWindow(QMainWindow):
         self._gc=0
         self._locks[g] = now
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+        # 到这里三道闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
+        # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
+        # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
+        # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
+        self.it.mark_active()
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
         # "已执行"提示（立即显示，约 0.8s 后恢复）；视频页的左/右实际是快退/快进
         label = CONTROL_CN.get(g, g)

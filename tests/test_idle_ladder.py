@@ -27,12 +27,18 @@ class _StubRecognizer:
 
 class _LadderTestBase(unittest.TestCase):
 
+    # 子类设 True 表示"要测**出厂值**"，此时不套用下面的夹具阶梯。
+    # TestLadderConfig 必须用出厂值 —— 否则它测的是一份写死的副本，
+    # 改了 config.IDLE_LADDER 也没人发现（这个坑实际踩过）。
+    USE_SHIPPED_LADDER = False
+
     def setUp(self):
         self._saved = {
             "IDLE_LADDER": list(getattr(config, "IDLE_LADDER", [])),
             "IDLE_LADDER_ENABLED": getattr(config, "IDLE_LADDER_ENABLED", True),
         }
-        config.IDLE_LADDER = [(0, 20), (8000, 300), (60000, 1000)]
+        if not self.USE_SHIPPED_LADDER:
+            config.IDLE_LADDER = [(0, 20), (10000, 350), (60000, 1000)]
         config.IDLE_LADDER_ENABLED = True
         # 不启动线程：QThread 对象可以直接构造，只是不 start()
         self.it = InferenceThread(None, _StubRecognizer())
@@ -52,18 +58,23 @@ class TestLadderSteps(_LadderTestBase):
         self.assertEqual(self.it.ladder_step(), 0)
         self.assertEqual(self.it.interval_ms(0), 20)
 
-    def test_空闲不足8秒仍是全速(self):
-        """这一条直接对应"访客中途停 2~3 秒"的场景——绝不能降频"""
-        for pause_ms in (2000, 3000, 5000, 7999):
+    def test_空闲不足10秒仍是全速(self):
+        """这一条直接对应"访客中途停几秒"的场景——绝不能降频。
+
+        **不测贴着阈值的 9999ms**：Windows 上 `time.time()` 的粒度约 15ms，
+        差 1ms 的边界会随机翻车（实际踩到过一条 `0 != 1`）。
+        "刚好到阈值就降频"由 `_idle(10000)` 那条覆盖。
+        """
+        for pause_ms in (2000, 3000, 5000, 9000):
             with self.subTest(pause_ms=pause_ms):
                 self._idle(pause_ms)
                 self.assertEqual(self.it.ladder_step(), 0,
                                  f"停顿 {pause_ms}ms 不该离开全速档")
 
-    def test_空闲8秒进第二档(self):
-        self._idle(8000)
+    def test_空闲10秒进第二档(self):
+        self._idle(10000)
         self.assertEqual(self.it.ladder_step(), 1)
-        self.assertEqual(self.it.interval_ms(1), 300)
+        self.assertEqual(self.it.interval_ms(1), 350)
 
     def test_空闲60秒进最深档(self):
         self._idle(60000)
@@ -71,8 +82,13 @@ class TestLadderSteps(_LadderTestBase):
         self.assertEqual(self.it.interval_ms(2), 1000)
 
     def test_档位边界(self):
-        self._idle(7999);  self.assertEqual(self.it.ladder_step(), 0)
-        self._idle(8000);  self.assertEqual(self.it.ladder_step(), 1)
+        """只测"刚好到阈值"这一侧。
+
+        "差一点没到"那一侧（7999 这种）不测：Windows 上 `time.time()` 粒度约 15ms，
+        贴着阈值的断言会随机翻车。反正那条语义已经被
+        `test_空闲不足10秒仍是全速` 用留足余量的值覆盖了。
+        """
+        self._idle(10000); self.assertEqual(self.it.ladder_step(), 1)
         self._idle(59999); self.assertEqual(self.it.ladder_step(), 1)
         self._idle(60000); self.assertEqual(self.it.ladder_step(), 2)
 
@@ -99,6 +115,9 @@ class TestLadderSteps(_LadderTestBase):
 
 
 class TestLadderConfig(_LadderTestBase):
+    """这些是**出厂值**的体检 —— 必须测真的那份，不是夹具里的副本。"""
+
+    USE_SHIPPED_LADDER = True
 
     def test_阶梯按空闲时长升序排列(self):
         """顺序错了会让档位选择出错（实现是"取最后一个满足的"）"""
@@ -129,15 +148,28 @@ class TestLadderConfig(_LadderTestBase):
         self.assertGreaterEqual(first_jump, 5000,
                                 f"第一档阈值 {first_jump}ms 太短，正常停顿就会降频")
 
-    def test_判据用的是触发门槛而非显示门槛(self):
-        """实测：空场景 raw 置信度最大 0.491。
+    def test_活跃判据不再看置信度(self):
+        """结构性守卫：`_last_active_ms` 只允许在 `__init__` 与 `mark_active` 里赋值。
 
-        若拿 DISPLAY_CONFIDENCE(0.35) 当判据，空场景有 4%~52% 的采样会被
-        误认成"有手势"，空闲计时永远清零、降频永远不触发。
+        **判据曾经是「raw 置信度 ≥ CONFIDENCE_THRESHOLD 就算活跃」**，但实测
+        **访客在镜头前走过（不做任何手势）也有 15.5% 的采样 ≥0.8** ——
+        路人一走就把空闲计时清零，降频在「有人走动但没人互动」的博物馆常态下
+        形同虚设。
+
+        现在判据是「**真的执行过动作**」：main_window 在闸门放行后调
+        `mark_active()`（正面行为由 tests/test_gesture_gate.py 的
+        TestActiveNotification 覆盖）。推理线程内部**不该**再按置信度刷新它 ——
+        多出来一次赋值，很可能就是有人把旧判据加了回来。
         """
-        self.assertGreaterEqual(config.CONFIDENCE_THRESHOLD, 0.5,
-                                "降频判据必须用一个空场景达不到的门槛")
-        self.assertGreater(config.CONFIDENCE_THRESHOLD, config.DISPLAY_CONFIDENCE)
+        import inspect
+        from src.core import inference as inf
+        code = "\n".join(line for line in inspect.getsource(inf.InferenceThread).splitlines()
+                         if not line.lstrip().startswith("#"))
+        n = code.count("_last_active_ms =")
+        self.assertEqual(
+            n, 2,
+            f"`_last_active_ms` 被赋值 {n} 次，应为 2 次（__init__ 与 mark_active）。"
+            "多出来那次很可能是旧判据又回来了 —— 那会让路人走过就把空闲计时清零。")
 
 
 if __name__ == "__main__":

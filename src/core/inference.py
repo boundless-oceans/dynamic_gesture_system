@@ -179,12 +179,17 @@ class InferenceThread(QThread):
         self.frame_buffer = frame_buffer
         self.recognizer = recognizer
         self._running = False
-        # 最近一次"识别到手势"的时刻（毫秒）。空闲降频就按它算空闲了多久。
+        # 最近一次"**真的执行了动作**"的时刻（毫秒）。空闲降频按它算空闲了多久。
+        # ⚠ 别改成"识别到高置信手势"——实测访客走路时也有 15.5% 的采样 ≥0.8，
+        #   那样路人一过就把计时清零。见 docs/MECHANISMS.md §2.2。
         self._last_active_ms = time.time() * 1000.0
 
     # ---- 空闲降频 ----
     def mark_active(self):
-        """外部（如重开摄像头）调用：把空闲计时清零，立刻回到全速档"""
+        """外部调用：把空闲计时清零，立刻回到全速档。
+
+        调用点：main_window 在动作真的执行后、重开摄像头后。
+        """
         self._last_active_ms = time.time() * 1000.0
 
     def idle_ms(self) -> float:
@@ -237,10 +242,15 @@ class InferenceThread(QThread):
                     idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
                     clip = [window[i] for i in idx]
                     res = self.recognizer.predict(clip)
-                    # 识别到手势 → 立刻回到全速档（用即时的 raw 置信度，比平滑值
-                    # 反应更快；判据与触发门槛同一个值，空场景实测从不达标）
-                    if res.get("raw_confidence", 0.0) >= config.CONFIDENCE_THRESHOLD:
-                        self._last_active_ms = time.time() * 1000.0
+                    # ⚠ 这里**刻意不再**按置信度刷新"活跃"时刻。
+                    #
+                    # 曾经是"raw 置信度 ≥ CONFIDENCE_THRESHOLD 就算活跃"，但实测
+                    # **访客在镜头前走过（不做手势）也有 15.5% 的采样 ≥0.8** ——
+                    # 于是空闲计时被路人反复清零，降频在"有人走动但没人互动"的
+                    # 博物馆常态下形同虚设。
+                    #
+                    # 现在的判据是**"真的执行过一次动作"**，由 main_window 在闸门
+                    # 放行后调 mark_active()。见 docs/MECHANISMS.md §2.2。
                     # 始终发送（显示用）；触发与否由主窗口按置信度门槛决定
                     self.result_ready.emit(res)
                 if fails:
