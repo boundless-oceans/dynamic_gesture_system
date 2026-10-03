@@ -34,12 +34,16 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(1)
         # 手势状态（必须在 currentChanged 连接之前初始化）
         self._lg=None; self._gc=0
-        self._cooldown_until=0.0   # 动作冷却截止时间(ms)
-        self._locks={}             # 已触发且未"松手"的动作 → 触发时间(ms)，超时自动解锁
+        # ---- 动作冷却（现在**唯一**的防重复触发机制）----
+        # 分两步走：动作执行后先 `_pending_release=True`，**等访客松手**；
+        # 松手那一刻才把 `_cooldown_until` 定下来。为什么要分两步见 _on_result。
+        self._pending_release=False
+        self._cooldown_until=0.0
+        self._hold_since=0.0       # 上次执行动作的时刻(ms)，只给 MAX_HOLD_MS 防死锁用
         self._toast_until=0.0      # "已执行"提示截止时间(ms)
         self._toast_text=""
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
-        # 换页：重置去抖（锁存要保留，理由见 _on_page_changed）
+        # 换页：重置去抖（冷却要保留，理由见 _on_page_changed）
         self.stack.currentChanged.connect(self._on_page_changed)
         central=QWidget(); central.setStyleSheet("background:transparent;")
         self.stack.setStyleSheet("background:transparent;")
@@ -73,12 +77,11 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, idx):
         # 重置去抖：新页面上要重新攒够连续次数。
         #
-        # 但**不要清锁**——这里曾经清过，结果正好帮了倒忙：换页那一刻，
-        # 用户的手通常还停在触发手势的姿势上（尤其是单击后慢松手），
-        # 锁一清，残留手势就失去了唯一的防护，几秒后在新页面上又触发一次
+        # 但**不要动冷却**——这里曾经清过（当年清的是"锁存"），结果正好帮了倒忙：
+        # 换页那一刻，用户的手通常还停在触发手势的姿势上（尤其是单击后慢松手），
+        # 防护一清，残留手势几秒后就在新页面上又触发一次
         # （首页单击进详情 → 残留单击又被详情页当"确认" → 直接弹回首页）。
-        # 锁应该跟着"手"走：由松手（置信度掉下显示门槛）来释放，
-        # 超时解锁只是兜底，见 MAX_LOCK_MS。
+        # 防护应该跟着"手"走：由**松手**释放，见 _on_result。
         self._lg=None; self._gc=0
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
@@ -118,13 +121,17 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        # 松手判定：即时置信低于「松手门槛」→ 解锁所有动作，并重置去抖
-        # （要求重新做出手势才能再触发，避免用残留的平滑结果重复触发）
+        # 松手判定：即时置信低于「松手门槛」→ 认为访客把手放下了。
+        # **这一刻才是冷却开始计时的时刻**（不是动作执行的时刻）：
+        # 若从执行时刻起算，冷却 1.5s 一到、手还举着，残留手势就会被当成第二次操作
+        # —— 正是 §1.5 那个坑（首页点进详情 → 被弹回首页）。
         # ⚠ 用的是独立的 RELEASE_CONFIDENCE，**不是** DISPLAY_CONFIDENCE ——
-        # 显示门槛按观感调（现在为了不闪，它比松手门槛高），而松手门槛是防误触发的
-        # 安全线；两者联动的话，调观感会悄悄削弱防护。
+        # 显示门槛按观感调（现在为了不闪，它比松手门槛高），而松手门槛是防护线；
+        # 两者联动的话，调观感会悄悄削弱防护。
         if dc < config.RELEASE_CONFIDENCE:
-            self._locks.clear()
+            if self._pending_release:
+                self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+                self._pending_release = False
             self._lg=None; self._gc=0
         # "已执行"提示优先显示
         if now < self._toast_until:
@@ -149,22 +156,34 @@ class MainWindow(QMainWindow):
         if c: self._ocg(c)
     def _ocg(self,g):
         now=time.time()*1000.0
-        # 冷却：触发一次动作后，冷却期内不再响应
+        # ============ 现在只剩一道机制：动作冷却 ============
+        # 前半段：动作已执行、还在等访客松手 → 一律不响应。
+        # （这正是原先"锁存"挡的那个场景，换页之后尤其重要，见 _on_page_changed）
+        if self._pending_release:
+            # 防死锁：万一模型对静止画面一直报同一个手势，就永远等不到"松手"。
+            # 超过 MAX_HOLD_MS 强制起算冷却 —— 宁可偶尔多触发一次，
+            # 也不能让整个展台对任何手势都没反应（那种坏法不报错、看着一切正常）。
+            if (now - self._hold_since) >= config.MAX_HOLD_MS:
+                self._pending_release = False
+                self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+            else:
+                return
+        # 后半段：访客已松手，冷却期内不再响应
         if now < self._cooldown_until:
             return
-        # 去抖：连续 N 次相同动作才触发
+        # 去抖：连续 N 次相同动作才触发。默认 N=1 → 一次即触发。
+        # ⚠ 这里**不能**像原来那样在"手势变了"那一支直接 return ——
+        # 那样第一次永远轮不到触发，N=1 就变成了空转。
         if g==self._lg: self._gc+=1
-        else: self._lg=g; self._gc=1; return
+        else: self._lg=g; self._gc=1
         if self._gc<config.CONSISTENCY_COUNT: return
-        # 锁存：该动作已执行且用户尚未松手 → 不重复触发
-        # 超过 MAX_LOCK_MS 自动解锁，防止"松手后立刻重做同一手势"一直锁定
-        t_lock = self._locks.get(g)
-        if t_lock is not None and (now - t_lock) < config.MAX_LOCK_MS:
-            return
         self._gc=0
-        self._locks[g] = now
-        self._cooldown_until = now + config.ACTION_COOLDOWN_MS
-        # 到这里三道闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
+        # 执行了动作 → 进入"等松手"状态。冷却**此刻还不起算**，
+        # 要等 _on_result 判定松手（或 MAX_HOLD_MS 兜底）才开始计时。
+        self._pending_release = True
+        self._hold_since = now
+        self._cooldown_until = 0.0
+        # 到这里闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
         # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
         # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
         # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。

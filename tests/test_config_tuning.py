@@ -111,10 +111,10 @@ class TestLocalOverride(unittest.TestCase):
 
     def test_类型不符被忽略(self):
         self._restore_defaults()
-        self._write({"DISPLAY_CONFIDENCE": "垃圾", "MAX_LOCK_MS": None})
+        self._write({"DISPLAY_CONFIDENCE": "垃圾", "ACTION_COOLDOWN_MS": None})
         config._apply_local_overrides()
         self.assertEqual(config.DISPLAY_CONFIDENCE, config.DEFAULTS["DISPLAY_CONFIDENCE"])
-        self.assertEqual(config.MAX_LOCK_MS, config.DEFAULTS["MAX_LOCK_MS"])
+        self.assertEqual(config.ACTION_COOLDOWN_MS, config.DEFAULTS["ACTION_COOLDOWN_MS"])
 
     def test_文件损坏不影响启动(self):
         self._restore_defaults()
