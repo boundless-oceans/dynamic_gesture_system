@@ -1,17 +1,25 @@
-"""触发闸门（MainWindow._ocg 与 _on_result）的回归测试
+"""防重复触发（MainWindow._ocg 与 _on_result）的回归测试
 
-这是整套手势交互里调试最久、也最容易被参数改动带坏的一块。
+这是整套手势交互里调试最久、也最容易被改动带坏的一块。
 
-**2026-10 起机制简化了**：原先三道闸门（去抖 / 冷却 / 锁存），现在只剩**一道
-「动作冷却」**，而且冷却**从"松手"起算，不是从"触发"起算**。理由见 _on_result 的注释：
-从触发起算会把 §1.5 那个坑放回来（首页点进详情 → 被残留手势弹回首页）。
-`MAX_HOLD_MS` 是**防死锁**的兜底（模型一直报同一手势、等不到松手时别让展台
-彻底没反应），不是防误触发。
+**2026-10 起机制简化成两道，都很短，且都不依赖机器快慢：**
+
+  ① 冷却   从**触发**时刻起算，`ACTION_COOLDOWN_MS` 内不再响应
+  ② 间隙   触发条件必须**先不成立一次**，下一次才算数
+
+② 是对 docs/MECHANISMS.md §1.5 那个坑（首页点进详情 → 残留手势被当成第二次操作
+→ 被弹回首页）的精确防护：同一个手势一直被识别时，触发条件始终成立，
+间隙永远不来，于是不会再触发。
+
+⚠ **②必须看"触发用的那个量"**（平滑置信度 vs `CONFIDENCE_THRESHOLD`）。
+2026-10 修掉的那个错配就是这里：原先"松手"看的是**即时**置信度 < 0.35 ——
+两个不同的量、两个不同的门槛，于是手放下了模型仍可能报 0.4~0.6，
+永远等不到间隙，一路走到 `MAX_HOLD_MS` 兜底（现场表现是"要等好久"）。
 
 测法是直接调用真实方法，用一个桩对象充当 MainWindow 实例——
 不构造任何窗口，因此不会拖起 WebEngine、摄像头和模型（除 torch 的导入外）。
 _ocg / _on_result 只依赖：stack.currentIndex()、pages[...]、cw.set_confidence()、
-toast.show_toast()、_go_detail()、it.mark_active()，以及 _lg/_gc/_pending_release/
+toast.show_toast()、_go_detail()、it.mark_active()，以及 _lg/_gc/_need_gap/
 _cooldown_until/_hold_since/_toast_text 这些状态字段
 （改 MainWindow.__init__ 时要同步这里的桩）。
 """
@@ -95,9 +103,9 @@ class _Harness:
         # ---- 闸门状态字段（必须与 MainWindow.__init__ 保持一致）----
         self._lg = None
         self._gc = 0
-        self._pending_release = False    # 动作已执行、还在等访客松手
-        self._cooldown_until = 0.0       # 松手之后冷却的截止时刻
-        self._hold_since = 0.0           # 动作执行时刻，只给防死锁兜底用
+        self._cooldown_until = 0.0       # 冷却截止（从触发时刻起算）
+        self._need_gap = False           # 触发条件还没"断"过
+        self._hold_since = 0.0           # 上次触发时刻，只给防死锁兜底用
         self._toast_text = ""
         # "已执行"提示的落点（src/ui/toast.py）。桩只要能记录调用即可
         self.toast = _Calls()
@@ -142,18 +150,18 @@ class _Harness:
         """
         self._lg = None
         self._gc = 0
-        self._pending_release = False
+        self._need_gap = False
         self._cooldown_until = 0.0
         for _ in range(max(1, config.CONSISTENCY_COUNT)):
             self.ocg(g)
 
-    def release(self, raw="0", raw_conf=0.05):
-        """模拟"访客把手放下"：喂一个低于松手门槛的即时结果。
+    def gap(self, gesture="0", conf=0.10, raw_gesture="0", raw_conf=0.05):
+        """模拟"触发条件断了一次"：喂一个**平滑**置信度低于门槛的结果。
 
-        冷却就是从这一刻起算的（见 _on_result）。
+        间隙就是靠这个时刻记录的（见 _on_result）。
         """
-        self.on_result({"gesture": "0", "confidence": 0.9,
-                        "raw_gesture": raw, "raw_confidence": raw_conf})
+        self.on_result({"gesture": gesture, "confidence": conf,
+                        "raw_gesture": raw_gesture, "raw_confidence": raw_conf})
 
     def page_calls(self, page):
         return self.pages[page].names()
@@ -170,7 +178,7 @@ class _Base(unittest.TestCase):
         self._saved = {k: getattr(config, k) for k in
                        ("CONSISTENCY_COUNT", "ACTION_COOLDOWN_MS", "MAX_HOLD_MS",
                         "CONFIDENCE_THRESHOLD", "DISPLAY_CONFIDENCE",
-                        "DISPLAY_SWITCH_CONFIDENCE", "RELEASE_CONFIDENCE",
+                        "DISPLAY_SWITCH_CONFIDENCE",
                         "SEEK_STEP_MS", "TOAST_MS")}
         config.CONSISTENCY_COUNT = config.DEFAULTS["CONSISTENCY_COUNT"]
         config.ACTION_COOLDOWN_MS = config.DEFAULTS["ACTION_COOLDOWN_MS"]
@@ -218,56 +226,29 @@ class TestTriggerOnce(_Base):
 
 
 class TestCooldown(_Base):
-    """动作冷却 —— 现在**唯一**的防重复触发机制。
-
-    它分两步：执行动作 → 等访客松手 → 松手后再静默 ACTION_COOLDOWN_MS。
-    """
+    """冷却：**从触发时刻**起算，`ACTION_COOLDOWN_MS` 内不再响应"""
 
     def test_冷却期内不再响应(self):
         self.h.fire("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next"])
-        self.h.release()                                     # 松手 → 冷却起算
+        self.h.gap()                                    # 触发条件断过一次
         self.h.clock.advance(config.ACTION_COOLDOWN_MS - 100)
         self.h.ocg("swipe_right")
         self.assertEqual(self.h.page_calls("home"), ["_next"], "冷却期内不该再次触发")
 
-    def test_未松手前一直不响应(self):
-        """原先由"锁存"挡的场景：动作执行了、手还举着 → 不该重复触发。
+    def test_冷却从触发时刻起算而不是从间隙起算(self):
+        """⚠ 这条守着本次的改动。
 
-        这里特意**推进到远超冷却时长**再试，证明挡人的不是冷却，而是"还没松手"。
-        """
-        self.h.fire("swipe_right")
-        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 2000)
-        self.h.ocg("swipe_right")
-        self.assertEqual(self.h.page_calls("home"), ["_next"], "手还举着，不该重复触发")
-
-    def test_未松手时换个动作也不响应(self):
-        """等松手是**全局**的，不区分是哪个手势 —— 手没放下就不算"做完了"。"""
-        self.h.fire("swipe_right")
-        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 2000)
-        self.h.ocg("swipe_left")
-        self.assertEqual(self.h.page_calls("home"), ["_next"], "手还举着，换个手势也不该触发")
-
-    def test_松手后冷却期满可以再做一次(self):
-        self.h.fire("swipe_right")
-        self.h.release()
-        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 100)
-        self.h.ocg("swipe_right")
-        self.assertEqual(self.h.page_calls("home"), ["_next", "_next"])
-
-    def test_冷却从松手起算而不是从触发起算(self):
-        """⚠ §1.5 那个坑的核心。
-
-        若从**触发**时刻起算，手还举着的访客在 1.5s 后就会被重复触发
-        —— 首页点进详情 → 被弹回首页。
+        原先冷却从"松手"起算，于是每次操作都要多等"手放下的时间"（0.6~5 秒），
+        1.5 秒的冷却体感成了 2~6.5 秒。现在改成从**触发**起算：
+        间隙来得再晚，也不该把冷却的截止时间往后推。
         """
         self.h.fire("click")
-        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 500)   # 若从触发起算，早就过了
-        self.h.ocg("click")
-        self.assertEqual(self.h.page_calls("home"), ["current_index"], "还没松手，不该再触发")
-
-        self.h.release()                                       # 现在才松手，冷却从这一刻起
+        deadline = self.h._cooldown_until
         self.h.clock.advance(config.ACTION_COOLDOWN_MS - 100)
+        self.h.gap()                                    # 间隙姗姗来迟
+        self.assertEqual(self.h._cooldown_until, deadline,
+                         "间隙不该影响冷却的截止时刻")
         self.h.ocg("click")
         self.assertEqual(self.h.page_calls("home"), ["current_index"], "冷却还没满")
         self.h.clock.advance(200)
@@ -275,11 +256,21 @@ class TestCooldown(_Base):
         self.assertEqual(self.h.page_calls("home"),
                          ["current_index", "current_index"], "冷却满了就该能再做一次")
 
-    def test_超过MAX_HOLD_MS强制解锁(self):
-        """防死锁兜底：模型一直报同一个手势、永远等不到"松手"时，
+    def test_间隙未到时一直不响应(self):
+        """同一个手势一直被识别 → 触发条件始终成立 → 间隙不来 → 不重复触发。
+
+        这里特意**推进到远超冷却时长**再试，证明挡人的不是冷却，而是间隙。
+        """
+        self.h.fire("swipe_right")
+        self.h.clock.advance(config.MAX_HOLD_MS - 100)   # 冷却早就过了，但还没到兜底
+        self.h.ocg("swipe_right")
+        self.assertEqual(self.h.page_calls("home"), ["_next"], "触发条件没断过，不该重复触发")
+
+    def test_超过MAX_HOLD_MS强制放行(self):
+        """防死锁兜底：模型一直报同一个手势、门槛之上不下来时，
         不能让整个展台对任何手势都没反应（那种坏法不报错、看着一切正常）。"""
-        self.assertGreater(config.MAX_HOLD_MS, config.ACTION_COOLDOWN_MS * 2,
-                           "前提：兜底时限要明显长于冷却，否则正常慢松手也会被它打断")
+        self.assertGreater(config.MAX_HOLD_MS, config.ACTION_COOLDOWN_MS,
+                           "前提：兜底时限要长于冷却，否则冷却还没满就被兜底放行了")
         self.h.fire("swipe_right")
         self.h.clock.advance(config.MAX_HOLD_MS + 100)
         self.h.ocg("swipe_right")        # 这一下触发兜底，但它自己仍被刚起算的冷却挡住
@@ -296,17 +287,15 @@ class TestPageChangeKeepsGuard(_Base):
     实测踩过的完整场景（首页单击 → 慢松手 → 被弹回首页）：
       t=0    首页单击触发"确认" → 进入详情页
       t≈0    换页，去抖重置
-      t=600  手还停在单击姿势，模型仍读成单击
-      t≥1800 若此时"等松手"的防护已被换页清掉，就会再触发一次，
-             而详情页的"确认"是激活选中项（默认"返回主页"）→ 弹回首页
+      t=600  手还停在单击姿势，模型仍读成单击，触发条件**始终成立** → 间隙不来
     根因是换页时清掉了防护——恰恰在防护最该保留的时刻撤掉了它。
     """
 
-    def test_换页不清掉等松手状态(self):
+    def test_换页不清掉间隙状态(self):
         self.h.fire("click")
-        self.assertTrue(self.h._pending_release, "触发后应进入等松手状态")
+        self.assertTrue(self.h._need_gap, "触发后应要求一个间隙")
         self.h._on_page_changed(IDX["detail"])
-        self.assertTrue(self.h._pending_release,
+        self.assertTrue(self.h._need_gap,
                         "换页不该清它——用户的手还停在原姿势上")
 
     def test_换页会重置去抖(self):
@@ -326,10 +315,10 @@ class TestPageChangeKeepsGuard(_Base):
         h.pages["detail"] = _Calls()
         h._on_page_changed(IDX["detail"])
 
-        # 之后每 0.6 秒都还有"单击"被识别出来（慢松手），且置信度一直很高
-        # —— 高置信度意味着"松手"那条路径不会生效，只能靠等松手状态挡住。
+        # 之后每 0.6 秒都还有"单击"被识别出来（慢松手），且平滑置信度一直很高
+        # —— 触发条件始终成立，间隙永远不来，所以只能靠它挡住。
         # 总时长特意压在 MAX_HOLD_MS 以内，否则会走到防死锁兜底那条路上。
-        for _ in range(5):
+        for _ in range(4):
             h.clock.advance(600)
             h.on_result({"gesture": "2", "confidence": 0.95,
                          "raw_gesture": "2", "raw_confidence": 0.95})
@@ -338,45 +327,50 @@ class TestPageChangeKeepsGuard(_Base):
                          "详情页不该被残留的单击触发'确认'（那会弹回首页）")
 
 
-class TestRelease(_Base):
-    """松手判定：即时置信度掉到 RELEASE_CONFIDENCE 以下 → 冷却开始计时"""
+class TestGap(_Base):
+    """间隙：触发条件必须**先不成立一次**，下一次才算数"""
 
-    def test_低置信度视为松手并起算冷却(self):
+    def test_触发条件不成立即记上间隙(self):
         self.h.fire("swipe_right")
-        self.assertEqual(self.h._cooldown_until, 0.0, "触发的那一刻冷却还不该起算")
-        self.h.release()
-        self.assertFalse(self.h._pending_release, "低置信度应视为已松手")
-        self.assertEqual(self.h._cooldown_until,
-                         self.h.clock.ms + config.ACTION_COOLDOWN_MS,
-                         "冷却应从松手这一刻起算")
-        self.assertIsNone(self.h._lg)
+        self.assertTrue(self.h._need_gap, "刚触发完应当要求一个间隙")
+        self.h.gap()
+        self.assertFalse(self.h._need_gap, "触发条件不成立了，应当记上间隙")
+        self.assertIsNone(self.h._lg, "间隙应当顺带重置去抖")
         self.assertEqual(self.h._gc, 0)
 
-    def test_高置信度不算松手(self):
+    def test_触发条件仍成立时不算间隙(self):
         self.h.fire("swipe_right")
-        self.h.on_result({"gesture": "6", "confidence": 0.99,
-                          "raw_gesture": "6", "raw_confidence": 0.90})
-        self.assertTrue(self.h._pending_release, "手还举着，不该算松手")
-        self.assertEqual(self.h._cooldown_until, 0.0, "没松手就不该起算冷却")
+        self.h.on_result({"gesture": "6", "confidence": 0.95,
+                          "raw_gesture": "6", "raw_confidence": 0.95})
+        self.assertTrue(self.h._need_gap, "触发条件还成立，不该算作间隙")
 
-    def test_松手用的是独立门槛而不是显示门槛(self):
-        """即时置信度落在两个门槛**之间**时，不该判为松手。
+    def test_间隙看的是触发用的那个量(self):
+        """⚠ 这条守着 2026-10 修掉的那个错配。
 
-        这两条线曾经共用一个常量（`DISPLAY_CONFIDENCE`）。2026-09 为了治悬浮窗
-        乱闪把显示门槛抬到 0.6；如果"松手"还跟着它走，访客仍在做手势时就会
-        提前松手 —— 那是**悄悄削弱防护**，而且不会报任何错。
-        所以拆成了两条线，这条用例守住它们不再联动。
+        触发看的是**平滑**置信度（≥ `CONFIDENCE_THRESHOLD`）；原先"松手"却看
+        **即时**置信度 < 0.35 —— 两个不同的量、两个不同的门槛。后果是：
+        手放下了模型仍可能对残留画面报 0.4~0.6 的即时值，于是永远等不到松手，
+        一路走到 `MAX_HOLD_MS` 兜底。现场表现就是"要等好久才能做下一个动作"。
         """
-        self.assertLess(config.RELEASE_CONFIDENCE, config.DISPLAY_CONFIDENCE,
-                        "前提：松手门槛低于显示门槛，本用例才有区分度")
+        # 即时值很低，但平滑值仍高 → 触发条件仍成立 → 不算间隙
         self.h.fire("swipe_right")
-        mid = (config.RELEASE_CONFIDENCE + config.DISPLAY_CONFIDENCE) / 2
-        self.h.on_result({"gesture": "6", "confidence": 0.99,
-                          "raw_gesture": "6", "raw_confidence": mid})
-        self.assertTrue(self.h._pending_release,
-                        "raw=%.2f 高于松手门槛(%.2f)，不该算松手 —— "
-                        "算了就说明又在拿显示门槛当松手判据"
-                        % (mid, config.RELEASE_CONFIDENCE))
+        self.h.on_result({"gesture": "6", "confidence": 0.95,
+                          "raw_gesture": "6", "raw_confidence": 0.10})
+        self.assertTrue(self.h._need_gap,
+                        "触发条件还成立（平滑值高），不该因为即时值低就算作间隙")
+
+        # 反过来：即时值很高，但平滑值掉到门槛以下 → 触发条件不成立 → 算间隙
+        self.h.on_result({"gesture": "6", "confidence": 0.20,
+                          "raw_gesture": "6", "raw_confidence": 0.90})
+        self.assertFalse(self.h._need_gap,
+                         "触发条件已不成立（平滑值低），应当记上间隙")
+
+    def test_门槛边界(self):
+        """正好等于门槛算"成立"（触发那边用的是 `>=`），所以不算间隙"""
+        self.h.fire("swipe_right")
+        self.h.on_result({"gesture": "6", "confidence": config.CONFIDENCE_THRESHOLD,
+                          "raw_gesture": "6", "raw_confidence": 0.5})
+        self.assertTrue(self.h._need_gap, "恰好等于门槛仍算成立")
 
 
 class TestActiveNotification(_Base):
@@ -395,10 +389,10 @@ class TestActiveNotification(_Base):
                          "动作执行了却没通知推理线程 → 空闲计时不被清零 → 会一直降频")
 
     def test_被闸门挡下时不算活跃(self):
-        """只有"真的执行了"才算。被冷却/等松手挡下的不是有效操作。"""
+        """只有"真的执行了"才算。被冷却/间隙挡下的不是有效操作。"""
         self.h.fire("swipe_right")
         n = self.h.it.active_calls
-        self.h.ocg("swipe_right")          # 手还举着 → 被"等松手"挡住
+        self.h.ocg("swipe_right")          # 触发条件没断过 → 被间隙挡住
         self.assertEqual(self.h.it.active_calls, n,
                          "被闸门挡下的动作不该算活跃（否则路人抖动也会被当成有人用）")
 
@@ -491,7 +485,7 @@ class TestPageRouting(_Base):
 
 
 class TestToast(_Base):
-    """右上角"已执行"提示的文案（视频页的左右要说成快退/快进）"""
+    """屏幕下方胶囊提示的文案（视频页的左右要说成快退/快进）"""
 
     def test_普通页面用控制名(self):
         self.h.fire("swipe_right")
