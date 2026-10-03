@@ -8,6 +8,9 @@
 
 ⚠ 子类**重写 `showEvent` / `hideEvent` 时必须调 `super()`**，
 否则粒子的启停会断掉（`tests/test_ui_feedback.py` 里有一条专门守这个）。
+
+⚠ 刷新间隔还会**跟着"已经空闲多久"降频**（见 `set_idle_source`）——
+空馆时没人看，没必要还按 20fps 刷整页。
 """
 
 import random
@@ -21,6 +24,23 @@ from src import config
 # 三种墨色。透明度随粒子不同，所以颜色对象在创建粒子时**逐个烘好**。
 _INK_RGB = [(30, 60, 120), (60, 100, 160), (20, 40, 80)]
 
+# 有人操作时的正常刷新间隔（空闲分档表的第一档）
+_BASE_INTERVAL_MS = config.INK_PARTICLE_LADDER[0][1]
+
+
+def particle_interval_ms(idle_ms):
+    """按"已经空闲了多久"给出粒子刷新间隔。
+
+    纯函数（好测）。`idle_ms` 为 `None` 表示没人告诉过我们空闲情况 —— 就按正常速度。
+    """
+    if idle_ms is None:
+        return _BASE_INTERVAL_MS
+    chosen = _BASE_INTERVAL_MS
+    for threshold, ms in config.INK_PARTICLE_LADDER:
+        if idle_ms >= threshold:
+            chosen = ms                # 取**满足条件的最深一档**
+    return chosen
+
 
 class BasePage(QWidget):
     """带水墨粒子背景的页面基类"""
@@ -28,10 +48,28 @@ class BasePage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._particles = self._create_particles(config.INK_PARTICLE_COUNT)
+        # "已经空闲多久(ms)"的取值函数。没人设过就是 None → 一直按正常速度跑。
+        # 由 MainWindow 在构造完之后交给各页面（见它的 _wire_idle_source）。
+        self._idle_ms_fn = None
         self._timer = QTimer(self)
-        self._timer.setInterval(config.INK_PARTICLE_MS)
+        self._timer.setInterval(_BASE_INTERVAL_MS)
         self._timer.timeout.connect(self._update_particles)
         # 刻意**不在这里 start()** —— 交给 showEvent，别让藏起来的页面空转
+
+    def set_idle_source(self, idle_ms_fn):
+        """给一个"已经空闲了多久(ms)"的取值函数 —— 粒子背景据此降频。
+
+        传 `None` 即取消降频（恢复固定间隔）。
+        """
+        self._idle_ms_fn = idle_ms_fn
+        self._retune()
+
+    def _retune(self):
+        """按当前空闲程度调整刷新间隔。只在档位真的变了时才动定时器。"""
+        idle = None if self._idle_ms_fn is None else self._idle_ms_fn()
+        want = particle_interval_ms(idle)
+        if self._timer.interval() != want:
+            self._timer.setInterval(want)
 
     def _create_particles(self, count: int):
         """随机撒一批"墨点"。
@@ -59,6 +97,7 @@ class BasePage(QWidget):
             if p['y'] < -20:             # 飘出上边就从下边重新进来
                 p['y'] = self.height() + 20
                 p['x'] = random.randint(0, max(self.width(), 1))
+        self._retune()                   # 空闲久了就自觉慢下来
         self.update()
 
     def _draw_background(self, painter: QPainter):
@@ -81,6 +120,7 @@ class BasePage(QWidget):
     # ---- 粒子只在页面可见时跑 ----
     def showEvent(self, event):
         super().showEvent(event)
+        self._retune()                   # 刚显示时也要用对档位（别先按 20fps 跑一帧）
         self._timer.start()
 
     def hideEvent(self, event):

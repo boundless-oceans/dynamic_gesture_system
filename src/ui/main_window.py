@@ -15,6 +15,7 @@ from src.ui.settings_page import SettingsPage
 from src.ui.inheritor_page import InheritorPage
 from src.ui.toast import ToastOverlay
 from src.ui.page_fade import PageFade
+from src.ui.base_page import BasePage
 from src import config
 
 IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4}
@@ -71,6 +72,8 @@ class MainWindow(QMainWindow):
         # 推理
         self.it=InferenceThread(self.frame_buffer,self.recognizer)
         self.it.result_ready.connect(self._on_result)
+        # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
+        self._wire_idle_source()
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
@@ -115,6 +118,18 @@ class MainWindow(QMainWindow):
         slug = project_assets.slug_of(self.pages["detail"]._pi)
         self.pages["viewer"].load_model(slug)
         self.stack.setCurrentIndex(3)
+    def _wire_idle_source(self):
+        """把"已经空闲多久(ms)"的取值函数交给各带粒子背景的页面。
+
+        粒子是**整页重绘**，空馆时没人看，没必要还按 20fps 刷。
+        空闲的判据交给推理线程 —— 它本来就在记"最近一次真的执行了动作是什么时候"
+        （见 docs/MECHANISMS.md §2.2），不用另起一套。
+
+        设置页不是 BasePage（自己是画背景的），没有粒子，跳过。
+        """
+        for p in self.pages.values():
+            if isinstance(p, BasePage):
+                p.set_idle_source(self.it.idle_ms)
     def _enter_inheritor(self, index=0):
         # 首页第二排每位传承人各是一张卡，点哪张就该进哪一位。
         # 原先没有这个参数，从首页进来**永远停在第一位**。

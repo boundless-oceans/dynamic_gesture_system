@@ -12,6 +12,7 @@
 """
 import os
 import sys
+import types
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -272,6 +273,115 @@ class TestInkParticles(unittest.TestCase):
         p.show()
         _app.processEvents()
         self.assertFalse(p.grab().isNull(), "背景画不出来")
+
+
+class _StubIdle:
+    """假的"空闲多久"来源"""
+
+    def __init__(self, ms):
+        self.ms = ms
+
+    def idle_ms(self):
+        return self.ms
+
+
+class TestIdleAwareParticles(unittest.TestCase):
+    """粒子背景跟着"空闲多久"降频 —— 空馆时没人看，没必要还按 20fps 刷整页"""
+
+    def setUp(self):
+        from src.ui.base_page import BasePage
+        self.page = BasePage()
+        self.page.resize(640, 480)
+        self._base = config.INK_PARTICLE_LADDER[0][1]
+
+    def tearDown(self):
+        self.page.close()
+
+    def test_纯函数_没给空闲值就按正常速度(self):
+        from src.ui.base_page import particle_interval_ms
+        self.assertEqual(particle_interval_ms(None), self._base)
+
+    def test_纯函数_各档取值(self):
+        from src.ui.base_page import particle_interval_ms
+        for threshold, ms in config.INK_PARTICLE_LADDER:
+            self.assertEqual(particle_interval_ms(threshold), ms,
+                             "空闲 %d ms 应当落在这一档" % threshold)
+        self.assertEqual(particle_interval_ms(threshold - 1),
+                         config.INK_PARTICLE_LADDER[-2][1] if len(
+                             config.INK_PARTICLE_LADDER) > 1 else self._base,
+                         "差 1ms 还没到下一档")
+
+    def test_纯函数_再久也不会更快(self):
+        from src.ui.base_page import particle_interval_ms
+        deepest = config.INK_PARTICLE_LADDER[-1][1]
+        for extra in (0, 10 ** 6, 10 ** 9):
+            self.assertEqual(particle_interval_ms(config.INK_PARTICLE_LADDER[-1][0] + extra),
+                             deepest)
+
+    def test_没设来源就一直按正常速度(self):
+        self.assertIsNone(self.page._idle_ms_fn)
+        self.page._retune()
+        self.assertEqual(self.page._timer.interval(), self._base)
+
+    def test_空闲久了刷新变慢_有人操作立刻回到正常(self):
+        src = _StubIdle(0)
+        self.page.set_idle_source(src.idle_ms)
+        self.assertEqual(self.page._timer.interval(), self._base)
+
+        src.ms = config.INK_PARTICLE_LADDER[-1][0]
+        self.page._retune()
+        self.assertEqual(self.page._timer.interval(), config.INK_PARTICLE_LADDER[-1][1],
+                         "空闲到最深一档了，粒子应当慢下来")
+
+        src.ms = 0
+        self.page._retune()
+        self.assertEqual(self.page._timer.interval(), self._base,
+                         "有人操作了应当立刻回到正常速度")
+
+    def test_可以取消降频(self):
+        self.page.set_idle_source(_StubIdle(10 ** 6).idle_ms)
+        self.assertNotEqual(self.page._timer.interval(), self._base)
+        self.page.set_idle_source(None)
+        self.assertEqual(self.page._timer.interval(), self._base)
+
+    def test_分档阈值与推理的空闲阶梯一致(self):
+        """⚠ 两边是同一个"多久没人操作"的语义。
+
+        阈值跑偏了就会出现"推理已经降频了、粒子还在满速刷"这种不一致 ——
+        而这恰恰是省 CPU 的初衷。
+        """
+        self.assertEqual([t for t, _ in config.INK_PARTICLE_LADDER],
+                         [t for t, _ in config.IDLE_LADDER])
+
+    def test_分档表本身合法(self):
+        ladder = config.INK_PARTICLE_LADDER
+        self.assertTrue(ladder, "分档表不能是空的")
+        self.assertEqual(ladder[0][0], 0,
+                         "第一档必须从 0 开始，否则刚操作完的空闲值没有档可用")
+        thresholds = [t for t, _ in ladder]
+        self.assertEqual(thresholds, sorted(thresholds), "阈值必须递增")
+        intervals = [m for _, m in ladder]
+        self.assertEqual(intervals, sorted(intervals), "间隔必须随空闲递增（越闲越慢）")
+        self.assertGreater(intervals[0], 0)
+
+
+class TestIdleWiringToPages(unittest.TestCase):
+    """`MainWindow._wire_idle_source` 把空闲来源交给**带粒子背景**的页面"""
+
+    def test_只交给带粒子背景的页面(self):
+        from src.ui.home_page import HomePage
+        from src.ui.settings_page import SettingsPage
+        home, settings = HomePage(), SettingsPage()
+        try:
+            stub = types.SimpleNamespace(pages={"home": home, "settings": settings},
+                                         it=_StubIdle(12345))
+            MainWindow._wire_idle_source(stub)
+            self.assertIsNotNone(home._idle_ms_fn, "首页应当拿到空闲来源")
+            self.assertEqual(home._idle_ms_fn(), 12345)
+            self.assertFalse(hasattr(settings, "_idle_ms_fn"),
+                             "设置页没有粒子背景（自己画的），不该被碰")
+        finally:
+            home.close(); settings.close()
 
 
 class _FakeTime:
