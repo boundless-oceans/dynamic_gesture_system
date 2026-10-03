@@ -45,8 +45,7 @@ SOFTWARE.
       CC BY-SA 3.0 不允许对作品附加更严格的条款，故此处单独列出。
 
   * pages/ 下的第三方库文件
-      three.min.js（three.js，MIT）、leaflet.js / leaflet.css（Leaflet，
-      BSD-2-Clause）、GLTFLoader.js（three.js examples，MIT）。
+      three.min.js（three.js，MIT）、GLTFLoader.js（three.js examples，MIT）。
 
       这些文件**不是本项目代码**，不在上面的 MIT 授权范围内，
       各自保留其原有许可与版权声明，见各文件头部的注释。
