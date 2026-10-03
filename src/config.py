@@ -102,6 +102,12 @@ CAMERA_SHOW_ZONE = True
 CAMERA_ZONE_BREATH = True
 CAMERA_ZONE_BREATH_MS = 3000
 
+# ---- 水墨粒子背景（首页 / 详情页 / 传承人页共用，见 src/ui/base_page.py）----
+# 粒子的刷新是**整页重绘**，所以这两个值直接影响 CPU。
+# 定时器只在页面**可见**时跑（子类重写 showEvent / hideEvent 时必须调 super()）。
+INK_PARTICLE_COUNT = 300       # 粒子个数（200 → 300，2026-10）
+INK_PARTICLE_MS = 50           # 刷新间隔（20fps）
+
 # ---- 首页布局 ----
 # 首页卡片区**上边界**要让开的高度（像素）—— 给右上角的摄像头悬浮窗腾地方。
 # 悬浮窗由 main_window.resizeEvent 放在 (宽-340, 20)、尺寸 320×240，下沿是 260；

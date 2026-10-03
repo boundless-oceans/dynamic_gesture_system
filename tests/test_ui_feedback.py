@@ -194,6 +194,86 @@ class _CountingFade(PageFade):
         super().showEvent(event)
 
 
+class TestInkParticles(unittest.TestCase):
+    """水墨粒子背景：只在页面可见时跑 + 颜色不每帧现造
+
+    ⚠ 它是**整页重绘**，每 50ms 一次。展台 24 小时开着，所以"藏起来要停"
+    和"别每帧白造对象"这两件都值得守。
+    """
+
+    def _make(self, cls=None):
+        from src.ui.base_page import BasePage
+        p = (cls or BasePage)()
+        p.resize(640, 480)
+        self._opened.append(p)
+        return p
+
+    def setUp(self):
+        self._opened = []
+
+    def tearDown(self):
+        for p in self._opened:
+            p.close()
+
+    def test_粒子数跟着配置走(self):
+        p = self._make()
+        self.assertEqual(len(p._particles), config.INK_PARTICLE_COUNT)
+
+    def test_透明度已经烘进颜色里(self):
+        """透明度是一辈子不变的 —— 每帧现造 QColor + setAlphaF 纯属浪费。
+
+        粒子 300 个、20fps，就是每秒 6000 个白造的对象。
+        """
+        p = self._make()
+        for pt in p._particles:
+            brush = pt['brush']
+            a = brush.color().alphaF()
+            self.assertGreaterEqual(a, 0.08 - 1e-6)
+            self.assertLessEqual(a, 0.35 + 1e-6)
+            self.assertGreater(brush.color().alpha(), 0, "透明度没烘进颜色里")
+
+    def test_刚构造时定时器不跑(self):
+        """⚠ 这是本条的由来：原先构造函数里无条件 start()，
+        页面还没显示（甚至永远不会显示）就开始空转。"""
+        p = self._make()
+        self.assertFalse(p._timer.isActive(), "页面还没显示，粒子不该已经在跑")
+
+    def test_显示后开始藏起来就停(self):
+        p = self._make()
+        p.show()
+        _app.processEvents()
+        self.assertTrue(p._timer.isActive(), "页面显示了，粒子应当跑起来")
+        p.hide()
+        _app.processEvents()
+        self.assertFalse(p._timer.isActive(), "页面藏了粒子还在跑 —— 整页重绘，白烧 CPU")
+
+    def test_三个继承页面都遵守这条(self):
+        """⚠ 子类重写 showEvent / hideEvent 时若忘了调 super()，粒子的启停就断了：
+        要么藏起来还在跑，要么显示了不动（画面一片死板）。
+        """
+        from src.ui.detail_page import DetailPage
+        from src.ui.home_page import HomePage
+        from src.ui.inheritor_page import InheritorPage
+        for cls in (HomePage, DetailPage, InheritorPage):
+            with self.subTest(page=cls.__name__):
+                p = self._make(cls)
+                p.show()
+                _app.processEvents()
+                self.assertTrue(p._timer.isActive(),
+                                "%s 显示后粒子没跑 —— 重写 showEvent 忘了调 super()？"
+                                % cls.__name__)
+                p.hide()
+                _app.processEvents()
+                self.assertFalse(p._timer.isActive(),
+                                 "%s 藏起来后粒子还在跑" % cls.__name__)
+
+    def test_绘制不崩(self):
+        p = self._make()
+        p.show()
+        _app.processEvents()
+        self.assertFalse(p.grab().isNull(), "背景画不出来")
+
+
 class _FakeTime:
     """可控时钟。光条的相位是按真实时间算的，测试里必须握在手上。"""
 
