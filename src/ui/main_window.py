@@ -13,6 +13,9 @@ from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
 from src.ui.settings_page import SettingsPage
 from src.ui.inheritor_page import InheritorPage
+from src.ui.toast import ToastOverlay
+from src.ui.page_fade import PageFade
+from src.ui.base_page import BasePage
 from src import config
 
 IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4}
@@ -33,14 +36,15 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(1)
         # 手势状态（必须在 currentChanged 连接之前初始化）
         self._lg=None; self._gc=0
-        # ---- 动作冷却（现在**唯一**的防重复触发机制）----
-        # 分两步走：动作执行后先 `_pending_release=True`，**等访客松手**；
-        # 松手那一刻才把 `_cooldown_until` 定下来。为什么要分两步见 _on_result。
-        self._pending_release=False
+        # ---- 防重复触发：两道，都很短，且都不依赖机器快慢 ----
+        # ① 冷却：从**触发**时刻起算，ACTION_COOLDOWN_MS 内不再响应
         self._cooldown_until=0.0
-        self._hold_since=0.0       # 上次执行动作的时刻(ms)，只给 MAX_HOLD_MS 防死锁用
-        self._toast_until=0.0      # "已执行"提示截止时间(ms)
-        self._toast_text=""
+        # ② 间隙：触发条件必须**先不成立一次**，下一次才算数。
+        #    这就是"同一个手势一直被识别"不会重复触发的保证（§1.5 的精确防护）——
+        #    判定在 _on_result 里，用的是触发用的同一个量（平滑置信度）。
+        self._need_gap=False
+        self._hold_since=0.0       # 上次触发时刻(ms)，只给 MAX_HOLD_MS 防死锁用
+        self._toast_text=""        # 最近一次"已执行"的文案（显示由 self.toast 负责）
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
         # 换页：重置去抖（冷却要保留，理由见 _on_page_changed）
         self.stack.currentChanged.connect(self._on_page_changed)
@@ -48,10 +52,14 @@ class MainWindow(QMainWindow):
         self.stack.setStyleSheet("background:transparent;")
         lo=QVBoxLayout(central); lo.setContentsMargins(0,0,0,0); lo.addWidget(self.stack)
         self.setCentralWidget(central)
+        # 换页过渡层：挂在**页面容器**上（不是主窗口），这样它只盖住页面，
+        # 不会盖住右上角的摄像头悬浮窗
+        self.fade=PageFade(central)
+        self._prev_idx=self.stack.currentIndex()   # 上一页是谁，换页时靠它取快照
         # 信号
         h=self.pages["home"]
-        h.item_selected.connect(self._go_detail)
-        h.go_inheritor.connect(self._enter_inheritor)
+        h.item_selected.connect(self._go_detail)              # 项目卡 → 详情页
+        h.inheritor_selected.connect(self._enter_inheritor)   # 传承人卡 → 传承人页那一位
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(self._go_viewer)
         self.pages["viewer"].go_home.connect(lambda:self.stack.setCurrentIndex(2))
@@ -59,9 +67,13 @@ class MainWindow(QMainWindow):
         self.pages["inheritor"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         # 摄像头
         self.cw=CameraWidget(self); self.cw.setFixedSize(320,240); self.cw.show()
+        # 操作提示（屏幕下方居中）。建在摄像头之后，免得被它盖住
+        self.toast=ToastOverlay(self)
         # 推理
         self.it=InferenceThread(self.frame_buffer,self.recognizer)
         self.it.result_ready.connect(self._on_result)
+        # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
+        self._wire_idle_source()
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
@@ -74,12 +86,20 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, idx):
         # 重置去抖：新页面上要重新攒够连续次数。
         #
-        # 但**不要动冷却**——这里曾经清过（当年清的是"锁存"），结果正好帮了倒忙：
-        # 换页那一刻，用户的手通常还停在触发手势的姿势上（尤其是单击后慢松手），
-        # 防护一清，残留手势几秒后就在新页面上又触发一次
+        # 但**不要动冷却、也不要动"间隙"状态**——这里曾经清过（当年清的是"锁存"），
+        # 结果正好帮了倒忙：换页那一刻，用户的手通常还停在触发手势的姿势上
+        # （尤其是单击后慢松手），防护一清，残留手势几秒后就在新页面上又触发一次
         # （首页单击进详情 → 残留单击又被详情页当"确认" → 直接弹回首页）。
-        # 防护应该跟着"手"走：由**松手**释放，见 _on_result。
+        # 防护跟着"手"走，不跟着页面走：间隙由手势**离开**来释放，见 _on_result。
         self._lg=None; self._gc=0
+        # 换页过渡：取**旧页面**的快照盖上去再淡出（硬切 → 交叉淡入淡出）。
+        # 必须在这里取：currentChanged 是**切完之后**才发的，旧页面此刻已经隐藏，
+        # 但 QWidget.grab() 走的是 render()，与可见性无关
+        # （实测验证过，拿到的仍是旧页面自己的内容）。
+        old=self.stack.widget(self._prev_idx)
+        if old is not None and self._prev_idx!=idx:
+            self.fade.start(old.grab())
+        self._prev_idx=idx
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):
@@ -98,8 +118,23 @@ class MainWindow(QMainWindow):
         slug = project_assets.slug_of(self.pages["detail"]._pi)
         self.pages["viewer"].load_model(slug)
         self.stack.setCurrentIndex(3)
-    def _enter_inheritor(self):
-        self.stack.setCurrentIndex(0)
+    def _wire_idle_source(self):
+        """把"已经空闲多久(ms)"的取值函数交给各带粒子背景的页面。
+
+        粒子是**整页重绘**，空馆时没人看，没必要还按 20fps 刷。
+        空闲的判据交给推理线程 —— 它本来就在记"最近一次真的执行了动作是什么时候"
+        （见 docs/MECHANISMS.md §2.2），不用另起一套。
+
+        设置页不是 BasePage（自己是画背景的），没有粒子，跳过。
+        """
+        for p in self.pages.values():
+            if isinstance(p, BasePage):
+                p.set_idle_source(self.it.idle_ms)
+    def _enter_inheritor(self, index=0):
+        # 首页第二排每位传承人各是一张卡，点哪张就该进哪一位。
+        # 原先没有这个参数，从首页进来**永远停在第一位**。
+        self.pages["inheritor"].show_person(index)
+        self.stack.setCurrentIndex(IDX["inheritor"])
     def _tc(self):
         # 判据是"线程还在不在"，不是 _running —— 线程刚启动时 _running 可能还没置位，
         # 那样按钮状态会和实际相反（点一下变成"又开一次"）
@@ -118,54 +153,52 @@ class MainWindow(QMainWindow):
         # 显示用即时(未平滑)结果 —— 切换手势时立刻跟手
         dg=int(r.get("raw_gesture", r["gesture"])); dc=r.get("raw_confidence", r.get("confidence",0))
         now=time.time()*1000.0
-        # 松手判定：即时置信低于「松手门槛」→ 认为访客把手放下了。
-        # **这一刻才是冷却开始计时的时刻**（不是动作执行的时刻）：
-        # 若从执行时刻起算，冷却 1.5s 一到、手还举着，残留手势就会被当成第二次操作
-        # —— 正是 §1.5 那个坑（首页点进详情 → 被弹回首页）。
-        # ⚠ 用的是独立的 RELEASE_CONFIDENCE，**不是** DISPLAY_CONFIDENCE ——
-        # 显示门槛按观感调（现在为了不闪，它比松手门槛高），而松手门槛是防护线；
-        # 两者联动的话，调观感会悄悄削弱防护。
-        if dc < config.RELEASE_CONFIDENCE:
-            if self._pending_release:
-                self._cooldown_until = now + config.ACTION_COOLDOWN_MS
-                self._pending_release = False
-            self._lg=None; self._gc=0
-        # "已执行"提示优先显示
-        if now < self._toast_until:
-            self.cw.set_custom(self._toast_text)
+        # 悬浮窗**始终显示识别结果**。"已执行"提示已搬到屏幕下方居中
+        # （src/ui/toast.py）—— 两者各说各的，访客既看得到模型认出了什么，
+        # 也看得到系统执行了什么，比原来"提示期间把识别结果顶掉"更有信息量。
+        cur=self._disp_label
+        # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
+        if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
+            self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
+            self.cw.set_confidence(str(dg), dc)
+        elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
+            # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
+            self.cw.set_confidence(cur, self._disp_conf)
         else:
-            cur=self._disp_label
-            # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
-            if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
-                self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
-                self.cw.set_confidence(str(dg), dc)
-            elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
-                # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
-                self.cw.set_confidence(cur, self._disp_conf)
-            else:
-                self._disp_label=None
-                self.cw.set_confidence(None, dc)
+            self._disp_label=None
+            self.cw.set_confidence(None, dc)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:
+            # 触发条件**不成立**了 —— 这就是"间隙"。
+            # 它是"同一个手势一直被识别"与"访客真的把手放下了"之间的分界线：
+            # 前者平滑置信度一直在门槛之上，间隙永远不来，于是不会重复触发（§1.5）；
+            # 后者一掉下来就记上，下一个手势立刻能触发。
+            #
+            # ⚠ 刻意用**平滑**置信度、且是**触发用的同一个门槛**：触发看哪个量，
+            #   间隙就得看哪个量。原先用"即时置信度 < RELEASE_CONFIDENCE(0.35)"是错配
+            #   —— 门槛低得多、时机也对不上：手放下了模型仍可能对残留画面报 0.4~0.6，
+            #   于是永远等不到间隙，一路走到 MAX_HOLD_MS 兜底（实测就是"要等好久"）。
+            self._need_gap = False
+            self._lg=None; self._gc=0
             return
         c=index_to_control(gid)
         if c: self._ocg(c)
     def _ocg(self,g):
         now=time.time()*1000.0
-        # ============ 现在只剩一道机制：动作冷却 ============
-        # 前半段：动作已执行、还在等访客松手 → 一律不响应。
-        # （这正是原先"锁存"挡的那个场景，换页之后尤其重要，见 _on_page_changed）
-        if self._pending_release:
-            # 防死锁：万一模型对静止画面一直报同一个手势，就永远等不到"松手"。
-            # 超过 MAX_HOLD_MS 强制起算冷却 —— 宁可偶尔多触发一次，
+        # ============ 防重复触发：两道，都很短，且都不依赖机器快慢 ============
+        # ① 间隙：上次触发之后，触发条件还没"断"过 → 不响应。
+        #    同一个手势一直被识别时靠这条挡住（判定在 _on_result）
+        if self._need_gap:
+            # 防死锁：万一模型对静止画面一直报同一个手势、门槛之上不下来，
+            # 就永远等不到间隙。超过 MAX_HOLD_MS 强制放行 —— 宁可偶尔多触发一次，
             # 也不能让整个展台对任何手势都没反应（那种坏法不报错、看着一切正常）。
             if (now - self._hold_since) >= config.MAX_HOLD_MS:
-                self._pending_release = False
+                self._need_gap = False
                 self._cooldown_until = now + config.ACTION_COOLDOWN_MS
             else:
                 return
-        # 后半段：访客已松手，冷却期内不再响应
+        # ② 冷却：从**触发**时刻起算
         if now < self._cooldown_until:
             return
         # 去抖：连续 N 次相同动作才触发。默认 N=1 → 一次即触发。
@@ -175,29 +208,33 @@ class MainWindow(QMainWindow):
         else: self._lg=g; self._gc=1
         if self._gc<config.CONSISTENCY_COUNT: return
         self._gc=0
-        # 执行了动作 → 进入"等松手"状态。冷却**此刻还不起算**，
-        # 要等 _on_result 判定松手（或 MAX_HOLD_MS 兜底）才开始计时。
-        self._pending_release = True
+        # 执行了动作 → 冷却**从这一刻起算**，并要求一个"间隙"才允许下次触发
+        self._cooldown_until = now + config.ACTION_COOLDOWN_MS
+        self._need_gap = True
         self._hold_since = now
-        self._cooldown_until = 0.0
         # 到这里闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
         # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
         # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
         # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
         self.it.mark_active()
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
-        # "已执行"提示（立即显示，约 0.8s 后恢复）；视频页的左/右实际是快退/快进
+        # "已执行"提示：屏幕下方居中弹一下（src/ui/toast.py）。
+        # 视频页的左/右实际是快退/快进，文案跟着改。
         label = CONTROL_CN.get(g, g)
         if g in ("swipe_left","swipe_right") and (
                 cn=="inheritor" or (cn=="detail" and self.pages["detail"].is_video_view())):
             label = "快退" if g=="swipe_left" else "快进"
-        self._toast_until = now + config.TOAST_MS
         self._toast_text = "✔ 已执行：" + label
-        self.cw.set_custom(self._toast_text)
+        self.toast.show_toast(self._toast_text)
         if cn=="home":
-            if g=="click": self._go_detail(self.pages["home"].current_index())
-            elif g=="swipe_left": self.pages["home"]._prev()
-            elif g=="swipe_right": self.pages["home"]._next()
+            hp=self.pages["home"]
+            # 单击 = 激活选中项：项目卡进详情页、传承人卡进传承人页那一位
+            # （由首页自己按卡片类型分发，这里不关心它是哪一种）
+            if g=="click": hp.activate_current()
+            elif g=="swipe_left": hp._prev()      # 扁平顺序上一步（首尾环绕）
+            elif g=="swipe_right": hp._next()
+            elif g=="swipe_up": hp._up()          # 换到上一排
+            elif g=="swipe_down": hp._down()      # 换到下一排
         elif cn=="detail":
             d=self.pages["detail"]
             if d.is_video_view():
@@ -227,5 +264,7 @@ class MainWindow(QMainWindow):
         self.cw.setGeometry(self.width()-340,20,320,240); self.cw.raise_()
         self.bc.move(self.width()//2-100,self.height()-30); self.bc.raise_()
         self.bs.move(self.width()//2+2,self.height()-30); self.bs.raise_()
+        # 提示胶囊要贴着底部居中，窗口尺寸一变就得重算
+        self.toast.place()
     def closeEvent(self,e):
         self.it.stop(); self.cw.stop(); e.accept()

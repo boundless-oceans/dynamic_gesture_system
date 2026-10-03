@@ -53,13 +53,26 @@ class TestThresholdRelations(unittest.TestCase):
                            config.DISPLAY_CONFIDENCE,
                            "切换门槛不高于显示门槛 → 标签会被频繁抢走")
 
-    def test_松手门槛低于显示门槛(self):
-        """松手是"访客还在不在做手势"的宽松判断，显示是"敢不敢报出来"的严格判断。
+    def test_间隙与触发用同一个门槛(self):
+        """⚠ 这两者必须看**同一个量、同一个门槛** —— 做结构性守卫。
 
-        松手门槛要是反超显示门槛，就会出现"够显示却不算松手"的错乱组合。
-        （两条线刻意独立，但相对大小仍有意义。）
+        2026-10 修过一个错配：触发看**平滑**置信度 ≥ `CONFIDENCE_THRESHOLD`，
+        而"松手/间隙"看**即时**置信度 < `RELEASE_CONFIDENCE`(0.35)。两个不同的量，
+        两个不同的门槛 —— 于是手放下了模型仍可能对残留画面报 0.4~0.6，
+        永远等不到间隙，一路走到 `MAX_HOLD_MS` 兜底。
+        现场表现是"要等好久才能做下一个动作"，而且不报任何错。
         """
-        self.assertLess(config.RELEASE_CONFIDENCE, config.DISPLAY_CONFIDENCE)
+        import inspect
+        from src.ui.main_window import MainWindow
+        self.assertFalse(hasattr(config, "RELEASE_CONFIDENCE"),
+                         "又冒出一个独立的松手门槛了 —— 它和触发用的不是同一个量")
+        src = inspect.getsource(MainWindow._on_result)
+        self.assertIn("config.CONFIDENCE_THRESHOLD", src,
+                      "间隙判定不再引用触发门槛了")
+
+    def test_兜底时长长于冷却(self):
+        """`MAX_HOLD_MS` 是防死锁的兜底；它要是短于冷却，冷却还没满就被兜底放行了。"""
+        self.assertGreater(config.MAX_HOLD_MS, config.ACTION_COOLDOWN_MS)
 
 
 class TestLocalOverride(unittest.TestCase):
