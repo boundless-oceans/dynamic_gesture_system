@@ -57,8 +57,8 @@ class MainWindow(QMainWindow):
         self._prev_idx=self.stack.currentIndex()   # 上一页是谁，换页时靠它取快照
         # 信号
         h=self.pages["home"]
-        h.item_selected.connect(self._go_detail)
-        h.go_inheritor.connect(self._enter_inheritor)
+        h.item_selected.connect(self._go_detail)              # 项目卡 → 详情页
+        h.inheritor_selected.connect(self._enter_inheritor)   # 传承人卡 → 传承人页那一位
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(self._go_viewer)
         self.pages["viewer"].go_home.connect(lambda:self.stack.setCurrentIndex(2))
@@ -115,8 +115,11 @@ class MainWindow(QMainWindow):
         slug = project_assets.slug_of(self.pages["detail"]._pi)
         self.pages["viewer"].load_model(slug)
         self.stack.setCurrentIndex(3)
-    def _enter_inheritor(self):
-        self.stack.setCurrentIndex(0)
+    def _enter_inheritor(self, index=0):
+        # 首页第二排每位传承人各是一张卡，点哪张就该进哪一位。
+        # 原先没有这个参数，从首页进来**永远停在第一位**。
+        self.pages["inheritor"].show_person(index)
+        self.stack.setCurrentIndex(IDX["inheritor"])
     def _tc(self):
         # 判据是"线程还在不在"，不是 _running —— 线程刚启动时 _running 可能还没置位，
         # 那样按钮状态会和实际相反（点一下变成"又开一次"）
@@ -209,9 +212,14 @@ class MainWindow(QMainWindow):
         self._toast_text = "✔ 已执行：" + label
         self.toast.show_toast(self._toast_text)
         if cn=="home":
-            if g=="click": self._go_detail(self.pages["home"].current_index())
-            elif g=="swipe_left": self.pages["home"]._prev()
-            elif g=="swipe_right": self.pages["home"]._next()
+            hp=self.pages["home"]
+            # 单击 = 激活选中项：项目卡进详情页、传承人卡进传承人页那一位
+            # （由首页自己按卡片类型分发，这里不关心它是哪一种）
+            if g=="click": hp.activate_current()
+            elif g=="swipe_left": hp._prev()      # 扁平顺序上一步（首尾环绕）
+            elif g=="swipe_right": hp._next()
+            elif g=="swipe_up": hp._up()          # 换到上一排
+            elif g=="swipe_down": hp._down()      # 换到下一排
         elif cn=="detail":
             d=self.pages["detail"]
             if d.is_video_view():

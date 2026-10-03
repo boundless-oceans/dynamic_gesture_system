@@ -102,6 +102,21 @@ CAMERA_SHOW_ZONE = True
 CAMERA_ZONE_BREATH = True
 CAMERA_ZONE_BREATH_MS = 3000
 
+# ---- 首页布局 ----
+# 首页卡片区**上边界**要让开的高度（像素）—— 给右上角的摄像头悬浮窗腾地方。
+# 悬浮窗由 main_window.resizeEvent 放在 (宽-340, 20)、尺寸 320×240，下沿是 260；
+# 这里再留 16px 余量。
+# ⚠ 改那行位置或改悬浮窗尺寸时，这里必须跟着改 —— 否则最右那张卡会被悬浮窗盖住。
+HOME_TOP_RESERVE_PX = 276
+# 底部要给「关闭摄像头 / 手势说明」两个按钮留的高度（它们贴在 height-30 一带）
+HOME_BOTTOM_RESERVE_PX = 62
+# 选中卡放大到基准尺寸的倍数。
+# ⚠ 一排的**总宽预算是按这个倍数算的**（见 home_page.HomePage._relayout）：
+#   所以无论选中哪一张，整排都不会被顶得位移。改这个值时要留意这个前提。
+HOME_SELECTED_SCALE = 1.08
+# 卡片宽高比（宽 / 高）。太小会显得又瘦又长，太大图会压扁。
+HOME_CARD_ASPECT = 0.64
+
 # ---- 帧缓冲 ----
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧
 

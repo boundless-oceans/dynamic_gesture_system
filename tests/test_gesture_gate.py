@@ -219,7 +219,7 @@ class TestTriggerOnce(_Base):
             self.h.ocg("click")
         self.assertEqual(self.h.page_calls("home"), [], "没攒够 4 次不该触发")
         self.h.ocg("click")
-        self.assertEqual(self.h.page_calls("home"), ["current_index"])
+        self.assertEqual(self.h.page_calls("home"), ["activate_current"])
 
     def test_中途换手势要重新计数(self):
         config.CONSISTENCY_COUNT = 2
@@ -254,11 +254,11 @@ class TestCooldown(_Base):
         self.assertEqual(self.h._cooldown_until, deadline,
                          "间隙不该影响冷却的截止时刻")
         self.h.ocg("click")
-        self.assertEqual(self.h.page_calls("home"), ["current_index"], "冷却还没满")
+        self.assertEqual(self.h.page_calls("home"), ["activate_current"], "冷却还没满")
         self.h.clock.advance(200)
         self.h.ocg("click")
         self.assertEqual(self.h.page_calls("home"),
-                         ["current_index", "current_index"], "冷却满了就该能再做一次")
+                         ["activate_current", "activate_current"], "冷却满了就该能再做一次")
 
     def test_间隙未到时一直不响应(self):
         """同一个手势一直被识别 → 触发条件始终成立 → 间隙不来 → 不重复触发。
@@ -311,9 +311,10 @@ class TestPageChangeKeepsGuard(_Base):
     def test_慢松手不会在新页面上重复触发(self):
         h = self.h
         # t=0 首页单击 → 进入详情页
-        h.pages["home"] = _Calls(current_index=0)
+        h.pages["home"] = _Calls()
         h.fire("click")
-        self.assertEqual(h.detail_arg, 0, "首页单击应进入详情页")
+        self.assertEqual(h.page_calls("home"), ["activate_current"],
+                         "首页单击应交由首页按卡片类型分发")
 
         # 换页（用户的手还停在单击姿势上）
         h.pages["detail"] = _Calls()
@@ -444,9 +445,12 @@ class TestPageRouting(_Base):
         h = self.h
         h.fire("swipe_left");  self.assertEqual(h.page_calls("home"), ["_prev"])
         h.fire("swipe_right"); self.assertEqual(h.page_calls("home"), ["_prev", "_next"])
-        h.pages["home"] = _Calls(current_index=3)
+        h.pages["home"] = _Calls()
         h.fire("click")
-        self.assertEqual(h.detail_arg, 3, "首页单击应进入当前选中项的详情")
+        self.assertEqual(h.page_calls("home")[-1], "activate_current",
+                         "首页单击应交由首页按卡片类型决定进哪里")
+        # 「项目卡进详情、传承人卡进传承人页那一位」这一层由
+        # tests/test_home_layout.py 用**真的** HomePage 验 —— 假页面验不了分发
 
     def test_详情页主视图(self):
         # is_video_view() 每次会被调两次：一次用于生成提示文案、一次用于分发

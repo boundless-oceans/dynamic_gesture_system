@@ -9,22 +9,8 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from src.ui.base_page import BasePage
 from src.core import project_assets as _PA
+from src.core.project_data import INHERITORS      # 数据加载统一收在 core/project_data.py
 from src import config
-from src import paths
-
-def _load_inheritors() -> list:
-    """读取 assets/inheritors.json（传承人页数据）"""
-    import json
-    path = paths.resource_path("assets", "inheritors.json")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("items", [])
-    except Exception as e:
-        print(f"[inheritor] 读取 inheritors.json 失败: {e}")
-        return []
-
-
-INHERITORS = _load_inheritors()
 
 
 class InheritorPage(BasePage):
@@ -131,6 +117,17 @@ class InheritorPage(BasePage):
         self._update()
 
     # ---- 手势接口 ----
+    def show_person(self, index: int):
+        """直接跳到第 index 位。
+
+        首页第二排每位传承人各是一张卡，点哪张就该进哪一位 ——
+        原先只有 `next_person`/`prev_person`，从首页进来**永远停在第一位**。
+        """
+        if self._total <= 0:
+            return
+        self._index = index % self._total
+        self._update()
+
     def next_person(self):
         """向下抛出：下一位传承人"""
         self._next()
