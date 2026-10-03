@@ -100,6 +100,7 @@ class _Harness:
         self.bc = _Calls()
         self.bs = _Calls()
         self._page_idx = IDX[page]
+        self._prev_idx = self._page_idx    # 换页过渡用（这里的 widget() 恒为 None）
         # ---- 闸门状态字段（必须与 MainWindow.__init__ 保持一致）----
         self._lg = None
         self._gc = 0
@@ -119,7 +120,10 @@ class _Harness:
 
     @property
     def stack(self):
-        return types.SimpleNamespace(currentIndex=lambda: self._page_idx)
+        # widget() 恒返回 None：换页过渡在这套用例里不该被真的触发
+        # （过渡本身由 tests/test_ui_feedback.py 的 TestPageTransitionWiring 负责）
+        return types.SimpleNamespace(currentIndex=lambda: self._page_idx,
+                                     widget=lambda i: None)
 
     def _go_detail(self, i):
         self.detail_arg = i

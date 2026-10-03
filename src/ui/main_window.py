@@ -14,6 +14,7 @@ from src.ui.viewer_page import ViewerPage
 from src.ui.settings_page import SettingsPage
 from src.ui.inheritor_page import InheritorPage
 from src.ui.toast import ToastOverlay
+from src.ui.page_fade import PageFade
 from src import config
 
 IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4}
@@ -50,6 +51,10 @@ class MainWindow(QMainWindow):
         self.stack.setStyleSheet("background:transparent;")
         lo=QVBoxLayout(central); lo.setContentsMargins(0,0,0,0); lo.addWidget(self.stack)
         self.setCentralWidget(central)
+        # 换页过渡层：挂在**页面容器**上（不是主窗口），这样它只盖住页面，
+        # 不会盖住右上角的摄像头悬浮窗
+        self.fade=PageFade(central)
+        self._prev_idx=self.stack.currentIndex()   # 上一页是谁，换页时靠它取快照
         # 信号
         h=self.pages["home"]
         h.item_selected.connect(self._go_detail)
@@ -84,6 +89,14 @@ class MainWindow(QMainWindow):
         # （首页单击进详情 → 残留单击又被详情页当"确认" → 直接弹回首页）。
         # 防护跟着"手"走，不跟着页面走：间隙由手势**离开**来释放，见 _on_result。
         self._lg=None; self._gc=0
+        # 换页过渡：取**旧页面**的快照盖上去再淡出（硬切 → 交叉淡入淡出）。
+        # 必须在这里取：currentChanged 是**切完之后**才发的，旧页面此刻已经隐藏，
+        # 但 QWidget.grab() 走的是 render()，与可见性无关
+        # （实测验证过，拿到的仍是旧页面自己的内容）。
+        old=self.stack.widget(self._prev_idx)
+        if old is not None and self._prev_idx!=idx:
+            self.fade.start(old.grab())
+        self._prev_idx=idx
         # 摄像头悬浮窗始终置顶（页面内容若与它重叠，以摄像头为准）
         self.cw.raise_(); self.bc.raise_(); self.bs.raise_()
     def start(self):

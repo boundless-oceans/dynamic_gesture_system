@@ -18,11 +18,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
 
 from src import config
 from src.ui.camera_widget import (ZONE_ALPHA_MAX, ZONE_ALPHA_MIN,
                                   ZONE_ALPHA_STATIC, zone_breath_alpha)
+from src.ui.main_window import MainWindow
+from src.ui.page_fade import PageFade
 from src.ui.toast import ToastOverlay
 
 _app = None
@@ -172,6 +175,176 @@ class TestToast(unittest.TestCase):
         t.show_toast("✔ 已执行：向右")
         t._set_opacity(1.0)
         self.assertFalse(t.grab().isNull(), "画不出来")
+
+
+class _CountingFade(PageFade):
+    """多记一个"被显示过几次"。
+
+    "关掉过渡"的保证是**覆盖层从不出现**，而不是"最后不可见" ——
+    后者不检查时长也能满足（show() 之后立刻被 Qt 收尾掉），靠不住。
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.show_count = 0
+
+    def showEvent(self, event):
+        self.show_count += 1
+        super().showEvent(event)
+
+
+class TestPageFade(unittest.TestCase):
+    """换页过渡层本身"""
+
+    def setUp(self):
+        self._parents = []            # 父窗口必须留住引用，否则子控件的 C++ 对象被销毁
+
+    def _make(self, cls=PageFade):
+        parent = QWidget()
+        parent.resize(400, 300)
+        parent.show()
+        self._parents.append(parent)
+        return cls(parent)
+
+    @staticmethod
+    def _snapshot(color="#ff0000"):
+        pm = QPixmap(400, 300)
+        pm.fill(QColor(color))
+        return pm
+
+    def test_盖上快照后会显示(self):
+        f = self._make()
+        self.assertFalse(f.isVisible(), "没换页时不该显示")
+        f.start(self._snapshot(), duration_ms=200)
+        self.assertTrue(f.isVisible())
+        self.assertGreater(f.opacity, 0.9, "应当从不透明开始淡出")
+
+    def test_淡出结束后隐藏(self):
+        """⚠ 这个覆盖层是一整张**不透明的快照**。
+
+        一旦卡住不消失，整个界面看起来就是"死机" —— 而且不报任何错。
+        """
+        f = self._make()
+        f.start(self._snapshot(), duration_ms=200)
+        f._finish()                   # 模拟动画结束回调
+        self.assertFalse(f.isVisible(), "过渡层没消失 —— 界面会看起来像死机")
+        self.assertIsNone(f._snapshot)
+
+    def test_关掉过渡时保持硬切(self):
+        """`PAGE_FADE_MS = 0` 的保证是"覆盖层**从不出现**"。
+
+        ⚠ 只断言"最后不可见"是不够的 —— 不检查时长的写法也会 `show()` 一下，
+        然后被 Qt 对 0 时长动画的处理立刻收尾，最后**同样**是不可见。
+        所以这里数的是"被显示过几次"。
+        """
+        f = self._make(_CountingFade)
+        f.start(self._snapshot(), duration_ms=0)
+        self.assertEqual(f.show_count, 0, "关掉过渡时不该显示覆盖层")
+        self.assertFalse(f.isVisible())
+
+    def test_空快照时什么都不做(self):
+        f = self._make()
+        f.start(None)
+        self.assertFalse(f.isVisible())
+        f.start(QPixmap())            # null pixmap
+        self.assertFalse(f.isVisible(), "空快照不该盖上去（会是一片黑）")
+
+    def test_不能挡住鼠标(self):
+        """过渡只有几百毫秒，但挡住的话这几百毫秒里点哪儿都没反应"""
+        f = self._make()
+        self.assertTrue(f.testAttribute(Qt.WA_TransparentForMouseEvents))
+
+    def test_连续两次不会把状态搞乱(self):
+        f = self._make()
+        f.start(self._snapshot("#ff0000"), duration_ms=200)
+        f.start(self._snapshot("#00ff00"), duration_ms=200)
+        self.assertTrue(f.isVisible())
+        self.assertGreater(f.opacity, 0.9)
+
+    def test_绘制不崩(self):
+        f = self._make()
+        f.grab()                      # 没有快照时应当直接跳过绘制
+        f.start(self._snapshot(), duration_ms=200)
+        self.assertFalse(f.grab().isNull(), "画不出来")
+
+
+class _RecordingFade:
+    """记录被交进来的快照"""
+
+    def __init__(self):
+        self.starts = []
+
+    def start(self, snapshot, duration_ms=None):
+        self.starts.append(snapshot)
+
+
+class _PageChangeHarness:
+    """只够跑 `MainWindow._on_page_changed` 的最小环境。
+
+    用**真的** QStackedWidget 和真页面 —— 因为这里要验的正是"对旧页面 `grab()`
+    拿到的到底是不是它自己那一页"，用假的就测不出东西了。
+    """
+
+    COLORS = ("#ff0000", "#00ff00", "#0000ff")
+
+    def __init__(self):
+        self.stack = QStackedWidget()
+        self.stack.resize(320, 200)
+        for col in self.COLORS:
+            w = QWidget()
+            w.setAutoFillBackground(True)
+            pal = w.palette()
+            pal.setColor(w.backgroundRole(), QColor(col))
+            w.setPalette(pal)
+            self.stack.addWidget(w)
+        self.stack.setCurrentIndex(0)
+        self.stack.show()
+        self._prev_idx = 0
+        self._lg = None
+        self._gc = 0
+        self.fade = _RecordingFade()
+        # 这三个只被 raise_() 碰一下
+        self.cw = QWidget(); self.bc = QWidget(); self.bs = QWidget()
+
+    def switch_to(self, idx):
+        self.stack.setCurrentIndex(idx)
+        MainWindow._on_page_changed(self, idx)
+
+
+class TestPageTransitionWiring(unittest.TestCase):
+    """换页时**真的**取了旧页面的快照、并交给了过渡层。
+
+    "算对了却没送进去"是这套 UI 最容易出的静默失效 —— 界面什么都不动，
+    也不报错。所以单独守一条。
+    """
+
+    def setUp(self):
+        self._h = _PageChangeHarness()
+
+    def tearDown(self):
+        self._h.stack.close()
+
+    def test_换页会把旧页面快照交给过渡层(self):
+        self._h.switch_to(2)
+        self.assertEqual(len(self._h.fade.starts), 1, "换页没有触发过渡")
+        self.assertFalse(self._h.fade.starts[0].isNull(), "交给过渡层的是空快照")
+
+    def test_索引没变就不过渡(self):
+        self._h.switch_to(0)          # 还在第 0 页
+        self.assertEqual(self._h.fade.starts, [], "页面没换就不该过渡")
+
+    def test_取的是旧页面而不是新页面(self):
+        """⚠ 取错页面的后果很隐蔽：过渡看起来"有"，内容却是错的 —— 一闪而过。
+
+        进入下一页时，覆盖层上应当是**上一页**的样子，淡出之后才露出新页面。
+        """
+        self._h.switch_to(1)          # 0 → 1，快照应当是第 0 页（红）
+        self._h.switch_to(2)          # 1 → 2，快照应当是第 1 页（绿）
+        self.assertEqual(len(self._h.fade.starts), 2)
+        img = self._h.fade.starts[-1].toImage()
+        self.assertEqual(
+            img.pixelColor(img.width() // 2, img.height() // 2).name(), "#00ff00",
+            "第二张快照取的不是上一页（第 1 页）")
 
 
 if __name__ == "__main__":
