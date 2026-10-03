@@ -116,6 +116,11 @@ HOME_BOTTOM_RESERVE_PX = 62
 HOME_SELECTED_SCALE = 1.08
 # 卡片宽高比（宽 / 高）。太小会显得又瘦又长，太大图会压扁。
 HOME_CARD_ASPECT = 0.64
+# 选中卡上扫过的那道光条（"光条流动"）。
+# 只是个装饰，但它是**周期性重绘**的 —— 展台 24 小时开着，嫌费 CPU 可以直接关掉
+# （关掉之后 `sheen_progress` 恒返回 None，连重绘都不会发生）。
+HOME_CARD_SHEEN = True
+HOME_CARD_SHEEN_MS = 2800      # 一个完整周期（扫过 + 停顿）
 
 # ---- 帧缓冲 ----
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧

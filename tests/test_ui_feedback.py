@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
 from src import config
 from src.ui.camera_widget import (ZONE_ALPHA_MAX, ZONE_ALPHA_MIN,
                                   ZONE_ALPHA_STATIC, zone_breath_alpha)
+from src.ui.home_page import HomePage, sheen_progress
 from src.ui.main_window import MainWindow
 from src.ui.page_fade import PageFade
 from src.ui.toast import ToastOverlay
@@ -191,6 +192,169 @@ class _CountingFade(PageFade):
     def showEvent(self, event):
         self.show_count += 1
         super().showEvent(event)
+
+
+class _FakeTime:
+    """可控时钟。光条的相位是按真实时间算的，测试里必须握在手上。"""
+
+    def __init__(self):
+        self.ms = 0.0
+
+    def time(self):
+        return self.ms / 1000.0
+
+
+class _HomeBase(unittest.TestCase):
+
+    def setUp(self):
+        self.page = HomePage()
+        self.page.resize(1000, 700)
+        self.page.show()
+        _app.processEvents()
+
+    def tearDown(self):
+        self.page.close()
+
+
+class TestCardSheenPure(_HomeBase):
+    """光条的位置计算 —— 纯函数，直接喂时间戳"""
+
+    def setUp(self):
+        super().setUp()
+        self._saved = (config.HOME_CARD_SHEEN, config.HOME_CARD_SHEEN_MS)
+        config.HOME_CARD_SHEEN = True
+        config.HOME_CARD_SHEEN_MS = 2800
+
+    def tearDown(self):
+        config.HOME_CARD_SHEEN, config.HOME_CARD_SHEEN_MS = self._saved
+        super().tearDown()
+
+    def test_周期起点从卡左外侧开始(self):
+        self.assertEqual(sheen_progress(0), 0.0)
+
+    def test_扫过期间一路向前(self):
+        p = config.HOME_CARD_SHEEN_MS
+        vals = [sheen_progress(p * f) for f in (0.0, 0.05, 0.1, 0.2, 0.3)]
+        self.assertTrue(all(v is not None for v in vals), "扫过期间应当每一帧都画")
+        self.assertEqual(vals, sorted(vals), "位置应当单调向前")
+
+    def test_扫完就停一段(self):
+        """停顿期不画 —— 既是为了"一闪而过"的观感，也省掉 2/3 的重绘"""
+        p = config.HOME_CARD_SHEEN_MS
+        self.assertIsNone(sheen_progress(p * 0.34))
+        self.assertIsNone(sheen_progress(p * 0.6))
+        self.assertIsNone(sheen_progress(p * 0.99))
+
+    def test_下一个周期重新开始(self):
+        p = config.HOME_CARD_SHEEN_MS
+        self.assertEqual(sheen_progress(p), 0.0)
+        self.assertEqual(sheen_progress(p * 3), 0.0)
+
+    def test_位置始终在_0_1_之间(self):
+        p = config.HOME_CARD_SHEEN_MS
+        for i in range(200):
+            v = sheen_progress(p * i / 61.0)
+            if v is not None:
+                self.assertGreaterEqual(v, 0.0)
+                self.assertLessEqual(v, 1.0)
+
+    def test_关掉开关就完全不画(self):
+        config.HOME_CARD_SHEEN = False
+        for f in (0.0, 0.1, 0.33, 0.8):
+            self.assertIsNone(sheen_progress(config.HOME_CARD_SHEEN_MS * f))
+
+    def test_周期非法时不崩也不画(self):
+        config.HOME_CARD_SHEEN_MS = 0
+        self.assertIsNone(sheen_progress(123))
+
+
+class TestCardSheenWiring(_HomeBase):
+    """光条真的画在**选中那张**上，而且**只在页面可见时**才刷新"""
+
+    def setUp(self):
+        super().setUp()
+        self._mod = __import__("src.ui.home_page", fromlist=["time"])
+        self._real_time = self._mod.time
+        self.fake = _FakeTime()
+        self._mod.time = self.fake
+        self._saved = config.HOME_CARD_SHEEN
+        config.HOME_CARD_SHEEN = True
+
+    def tearDown(self):
+        self._mod.time = self._real_time
+        config.HOME_CARD_SHEEN = self._saved
+        super().tearDown()
+
+    def _spy_updates(self):
+        called = []
+        for i, c in enumerate(self.page._cards):
+            c.update = (lambda i: (lambda *a: called.append(i)))(i)
+        return called
+
+    def test_只重绘选中那一张(self):
+        """11 张卡每帧全刷一遍没必要 —— 只有选中的那张有光条"""
+        self.fake.ms = 0.0                       # 周期起点，正在扫
+        self.page._move(2)
+        called = self._spy_updates()
+        self.page._tick_sheen()
+        self.assertEqual(called, [2], "应当只重绘选中的那一张")
+
+    def test_停顿期不重绘(self):
+        self.fake.ms = config.HOME_CARD_SHEEN_MS * 0.8
+        self.page._move(0)
+        self.page._sheen_live = False            # 上一帧也没画（已收过尾）
+        called = self._spy_updates()
+        self.page._tick_sheen()
+        self.assertEqual(called, [], "停顿期不该重绘")
+
+    def test_扫完补刷一帧(self):
+        """⚠ 不补这一帧的话，最后一帧可能停在"光条刚探进卡里"的位置上，
+        留下一条淡淡的竖边。"""
+        self.page._move(0)
+        self.fake.ms = 0.0
+        self.page._tick_sheen()                  # 正在扫
+        self.fake.ms = config.HOME_CARD_SHEEN_MS * 0.8
+        called = self._spy_updates()
+        self.page._tick_sheen()                  # 进入停顿
+        self.assertEqual(called, [0], "扫完应当补刷一帧收尾")
+
+    def test_页面藏起来就停止刷新(self):
+        """⚠ 展台 24 小时开着 —— 没人看的时候不该一直重绘"""
+        self.page.show()
+        _app.processEvents()
+        self.assertTrue(self.page._sheen.isActive(), "页面显示时应当刷新光条")
+        self.page.hide()
+        _app.processEvents()
+        self.assertFalse(self.page._sheen.isActive(), "页面藏了还在刷 —— 白烧 CPU")
+
+    def test_关掉效果就不启动刷新(self):
+        saved = config.HOME_CARD_SHEEN
+        config.HOME_CARD_SHEEN = False
+        try:
+            h = HomePage()
+            h.resize(800, 600)
+            h.show()
+            _app.processEvents()
+            self.assertFalse(h._sheen.isActive(), "关掉效果后不该再起刷新定时器")
+            h.close()
+        finally:
+            config.HOME_CARD_SHEEN = saved
+
+    def test_光条真的画上去了而且只画在选中那张上(self):
+        self.page._move(0)
+        self.fake.ms = config.HOME_CARD_SHEEN_MS * 0.17      # 扫到卡片中段
+        sel_mid = self.page._cards[0].grab().toImage()
+        other_mid = self.page._cards[1].grab().toImage()
+        self.fake.ms = config.HOME_CARD_SHEEN_MS * 0.8       # 停顿
+        sel_pause = self.page._cards[0].grab().toImage()
+        other_pause = self.page._cards[1].grab().toImage()
+        self.assertNotEqual(sel_mid, sel_pause, "选中卡上没看到光条")
+        self.assertEqual(other_mid, other_pause, "没选中的卡上不该有光条")
+
+    def test_绘制不崩(self):
+        self.fake.ms = config.HOME_CARD_SHEEN_MS * 0.17
+        for c in self.page._cards:
+            self.assertFalse(c.grab().isNull())
 
 
 class TestPageFade(unittest.TestCase):

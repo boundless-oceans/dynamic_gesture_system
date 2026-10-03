@@ -24,10 +24,12 @@
 """
 
 import os
+import time
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPixmap
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtGui import (QColor, QFont, QLinearGradient, QPainter, QPainterPath,
+                           QPixmap)
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 
 from src.ui.base_page import BasePage
@@ -41,6 +43,30 @@ _FROSTED = ("QFrame { background: rgba(255,255,255,0.25); border: 1px solid rgba
             " QFrame:hover { background: rgba(255,255,255,0.55); border: 2px solid #ff9900; }")
 _SELECTED = ("QFrame { background: rgba(255,255,255,0.5); border: 3px solid #ff7700;"
              " border-radius: 18px; }")
+
+# 选中卡上那道光条（"光条流动"）。只是个装饰，参数都往克制里调 —— 别盖住卡片文字。
+SHEEN_REFRESH_MS = 40          # 重绘间隔（25fps；它动得慢，够了）
+SHEEN_SWEEP_FRAC = 0.34        # 一次扫过占整个周期的比例，其余时间是停顿
+SHEEN_BAND_FRAC = 0.34         # 光条宽度占卡宽的比例
+SHEEN_ALPHA = 70               # 最亮处的不透明度
+SHEEN_RADIUS = 18              # 与选中态那个圆角一致（超出圆角的光会被裁掉）
+
+
+def sheen_progress(t_ms: float):
+    """光条此刻扫到卡宽的哪个位置（0~1）；**停顿期间返回 `None`（这一帧不用画）**。
+
+    做成纯函数是好测：动效本身没法断言，但"它按周期扫、扫完停一段、关掉就完全不画"
+    这几件事可以 —— 直接喂时间戳即可，不用起界面也不用等。
+    """
+    if not config.HOME_CARD_SHEEN:
+        return None
+    period = config.HOME_CARD_SHEEN_MS
+    if period <= 0:
+        return None
+    phase = (t_ms % period) / float(period)
+    if phase >= SHEEN_SWEEP_FRAC:
+        return None
+    return phase / SHEEN_SWEEP_FRAC
 
 
 class _ItemCard(QFrame):
@@ -156,6 +182,33 @@ class _ItemCard(QFrame):
     def mouseDoubleClickEvent(self, e):
         self.double_clicked.emit(self.index)
 
+    # ---- 选中卡上的光条 ----
+    def paintEvent(self, event):
+        super().paintEvent(event)          # 先让 QSS 把毛玻璃底画出来
+        if not self._selected:
+            return
+        p = sheen_progress(time.time() * 1000.0)
+        if p is None:
+            return                          # 停顿期（或关掉了这个效果）
+        w, h = self.width(), self.height()
+        if w <= 0 or h <= 0:
+            return
+        band = max(24.0, w * SHEEN_BAND_FRAC)
+        # 从卡外左侧扫到卡外右侧 —— 起步与收尾都在画面之外，所以看不出"突然出现/消失"
+        x = -band + p * (w + 2 * band)
+        g = QLinearGradient(x, 0.0, x + band, float(h))
+        g.setColorAt(0.0, QColor(255, 255, 255, 0))
+        g.setColorAt(0.5, QColor(255, 255, 255, SHEEN_ALPHA))
+        g.setColorAt(1.0, QColor(255, 255, 255, 0))
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        # 裁进圆角里，否则光条会糊到卡片外面（圆角那四个角）
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(self.rect()), SHEEN_RADIUS, SHEEN_RADIUS)
+        painter.setClipPath(path)
+        painter.fillRect(self.rect(), g)
+
 
 class HomePage(BasePage):
     item_selected = Signal(int)         # 项目下标 → 进详情页
@@ -184,8 +237,39 @@ class HomePage(BasePage):
                                  "border:3px solid rgba(140,30,30,0.6);border-radius:8px;")
 
         self._build_cards()
+
+        # 光条的刷新定时器。**只重绘选中那一张**，而且只在页面可见时跑 ——
+        # 展台 24 小时开着，没人看的时候不该烧 CPU 重绘。
+        self._sheen = QTimer(self)
+        self._sheen.setInterval(SHEEN_REFRESH_MS)
+        self._sheen.timeout.connect(self._tick_sheen)
+        self._sheen_live = False        # 上一帧是否真的画了光条（用于收尾那一帧）
+
         self._ready = True
         self._update()
+
+    # ---- 光条的驱动 ----
+    def _tick_sheen(self):
+        if not self._cards:
+            return
+        if sheen_progress(time.time() * 1000.0) is None:
+            # 停顿期：不重绘。但**扫完要补刷一帧**，否则最后一帧可能停在
+            # 光条刚探进卡里的位置上，留下一条淡淡的竖边。
+            if self._sheen_live:
+                self._sheen_live = False
+                self._cards[self._current].update()
+            return
+        self._sheen_live = True
+        self._cards[self._current].update()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        if config.HOME_CARD_SHEEN:
+            self._sheen.start()
+
+    def hideEvent(self, e):
+        super().hideEvent(e)
+        self._sheen.stop()
 
     # ---- 卡片 ----
     def _build_cards(self):
