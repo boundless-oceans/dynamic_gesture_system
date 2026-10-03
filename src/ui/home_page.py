@@ -96,7 +96,7 @@ class HomePage(BasePage):
         layout.addLayout(cl, stretch=3)
         self._cards[0].set_selected(True)
 
-        seal=QLabel("非遗\n之宝",self)
+        seal=QLabel("非遗\n珍宝",self)
         seal.setFixedSize(128,128); seal.setAlignment(Qt.AlignCenter)
         seal.setFont(QFont("STKaiti",26,QFont.Bold))
         seal.setStyleSheet("color:white;background:rgba(180,40,40,0.65);border:3px solid rgba(140,30,30,0.6);border-radius:8px;")
