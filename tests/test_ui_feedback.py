@@ -18,7 +18,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QAbstractAnimation, Qt
 from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import QApplication, QStackedWidget, QWidget
 
@@ -404,6 +404,111 @@ class _HomeBase(unittest.TestCase):
 
     def tearDown(self):
         self.page.close()
+
+
+class TestSelectionEasing(_HomeBase):
+    """选中卡"变大/缩小"是平滑过渡的，而且**围绕自己的中心**变大
+
+    （布局本身的用例在 tests/test_home_layout.py，那边把缓动关掉了，
+      验的是**最终**尺寸。）
+    """
+
+    def setUp(self):
+        super().setUp()
+        self._saved = config.HOME_SELECT_ANIM_MS
+        config.HOME_SELECT_ANIM_MS = 200
+        self.page._move(0)
+        _app.processEvents()
+
+    def tearDown(self):
+        config.HOME_SELECT_ANIM_MS = self._saved
+        super().tearDown()
+
+    @staticmethod
+    def _drive(card, ms):
+        """把动画拨到某个时刻 —— 测试里没有事件循环推它"""
+        card._anim.setCurrentTime(ms)
+
+    def test_切换选中会开始过渡而不是瞬间跳(self):
+        base_w = self.page._cards[1].width()
+        self.page._move(1)
+        c = self.page._cards[1]
+        self.assertNotEqual(c._anim.state(), QAbstractAnimation.Stopped,
+                            "切换选中没有走过渡")
+        self.assertEqual(c.width(), base_w, "还没开始动就已经是最终尺寸了")
+
+    def test_过渡到头会到最终尺寸(self):
+        self.page._move(1)
+        c = self.page._cards[1]
+        self._drive(c, config.HOME_SELECT_ANIM_MS)
+        self.assertAlmostEqual(
+            c.width(), round(c._base_w * config.HOME_SELECTED_SCALE), delta=1,
+            msg="过渡结束后没到选中的尺寸")
+
+    def test_取消选中的那张也会缩回去(self):
+        c0 = self.page._cards[0]
+        self.assertGreater(c0.width(), round(c0._base_w), "前提：第 0 张本来是选中的")
+        self.page._move(1)
+        self._drive(c0, config.HOME_SELECT_ANIM_MS)
+        self.assertAlmostEqual(c0.width(), round(c0._base_w), delta=1,
+                               msg="取消选中之后没缩回去")
+
+    def test_过渡过程中围绕中心变大(self):
+        """⚠ 不能按左上角对齐 —— 那样卡片会"往右下角长"，看着像在爬。"""
+        self.page._move(1)
+        c = self.page._cards[1]
+        cx0 = c.x() + c.width() / 2.0
+        cy0 = c.y() + c.height() / 2.0
+        self._drive(c, config.HOME_SELECT_ANIM_MS // 2)
+        self.assertGreater(c.width(), round(c._base_w), "前提：中途应当已经变大了一点")
+        self.assertAlmostEqual(c.x() + c.width() / 2.0, cx0, delta=1.5,
+                               msg="中心横向跑了 —— 不是围绕自己变大")
+        self.assertAlmostEqual(c.y() + c.height() / 2.0, cy0, delta=1.5,
+                               msg="中心纵向跑了")
+
+    def test_过渡过程中不碰别的卡(self):
+        before = [(c.x(), c.y(), c.width(), c.height()) for c in self.page._cards]
+        self.page._move(2)
+        self._drive(self.page._cards[2], config.HOME_SELECT_ANIM_MS // 2)
+        after = [(c.x(), c.y(), c.width(), c.height()) for c in self.page._cards]
+        for i, (b, a) in enumerate(zip(before, after)):
+            if i in (0, 2):          # 这两张本来就是"变化"的那一对
+                continue
+            self.assertEqual(b, a, "过渡把第 %d 张卡也动了" % i)
+
+    def test_关掉缓动就瞬间到位(self):
+        config.HOME_SELECT_ANIM_MS = 0
+        self.page._move(1)
+        c = self.page._cards[1]
+        self.assertEqual(c._anim.state(), QAbstractAnimation.Stopped)
+        self.assertAlmostEqual(c.width(), round(c._base_w * config.HOME_SELECTED_SCALE),
+                               delta=1, msg="关掉缓动应当立刻到位")
+
+    def test_窗口变化不走过渡(self):
+        """拖窗口时每张卡都在动会很难受 —— resize 一律瞬间到位"""
+        self.page.resize(1200, 760)
+        _app.processEvents()
+        for i, c in enumerate(self.page._cards):
+            self.assertEqual(c._anim.state(), QAbstractAnimation.Stopped,
+                             "resize 之后第 %d 张卡还在动" % i)
+            want = (config.HOME_SELECTED_SCALE if i == self.page.current_index()
+                    else 1.0)
+            self.assertAlmostEqual(c.width(), round(c._base_w * want), delta=1,
+                                   msg="第 %d 张卡 resize 后没立刻到位" % i)
+
+    def test_基准尺寸变了就不做动画(self):
+        """⚠ 上面那条其实有两道保险各自都能拦住（resize 改不了缩放比 +
+        `base_changed` 守卫），所以要单独钉住 `base_changed` 那一道。
+
+        它的意义是：**基准尺寸一变就一律瞬间到位** —— 哪怕调用方说 animate=True。
+        （`resizeEvent` 传的是 False，这里是双保险。）
+        """
+        c = self.page._cards[0]
+        self.assertAlmostEqual(c._scale, config.HOME_SELECTED_SCALE, delta=1e-6,
+                               msg="前提：第 0 张本来是选中的")
+        c.set_geometry_scale(1.0, c._base_w + 40, c._base_h + 40, animate=True)
+        self.assertEqual(c._anim.state(), QAbstractAnimation.Stopped,
+                         "基准尺寸变了还在做动画 —— 拖窗口时每张卡都会动")
 
 
 class TestCardSheenPure(_HomeBase):

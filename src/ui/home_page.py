@@ -27,7 +27,8 @@ import os
 import time
 
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import (Property, QEasingCurve, QPropertyAnimation, QRectF, Qt,
+                            QTimer, Signal)
 from PySide6.QtGui import (QColor, QFont, QLinearGradient, QPainter, QPainterPath,
                            QPixmap)
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
@@ -125,22 +126,74 @@ class _ItemCard(QFrame):
             lay.addStretch(1)
 
         self._refit_done = None
-        self.refit(160, 250)
+        # 尺寸 = 基准尺寸 × sel_scale。选中与否只改 sel_scale，
+        # 于是"变大/缩小"可以做成一段动画（见 set_geometry_scale）。
+        self._base_w, self._base_h = 160.0, 250.0
+        self._scale = 1.0
+        self._cx = self._cy = 0.0
+        self._anim = QPropertyAnimation(self, b"sel_scale", self)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._apply_size()
 
-    # ---- 尺寸与外观 ----
-    def refit(self, w: int, h: int):
-        """按给定尺寸重排自己：整体尺寸 + 图片缩放 + 字号。
+    # ---- 尺寸 ----
+    def _get_scale(self) -> float:
+        return self._scale
+
+    def _set_scale(self, v: float):
+        self._scale = float(v)
+        self._apply_size()
+
+    sel_scale = Property(float, _get_scale, _set_scale)
+
+    def place_at(self, cx: float, cy: float):
+        """按**中心点**摆放。
+
+        ⚠ 不能按左上角摆 —— 卡片尺寸在动画过程中一直在变，按左上角对齐的话
+        它会"往右下角长"，看着像在爬。按中心对齐才是围绕自己变大。
+        """
+        self._cx, self._cy = float(cx), float(cy)
+        self._move_to_center()
+
+    def _move_to_center(self):
+        self.move(int(round(self._cx - self.width() / 2.0)),
+                  int(round(self._cy - self.height() / 2.0)))
+
+    def set_geometry_scale(self, scale: float, base_w: float, base_h: float,
+                           animate: bool = True):
+        """给定基准尺寸和缩放比；`animate` 为真且缩放比变了就平滑过渡。
+
+        窗口 resize（基准尺寸变了）**不做动画** —— 否则拖窗口时每张卡都在动。
+        """
+        base_changed = (int(base_w), int(base_h)) != (int(self._base_w), int(self._base_h))
+        self._base_w, self._base_h = float(base_w), float(base_h)
+        if base_changed:
+            self._refit_done = None          # 基准变了 → 必须重排（哪怕缩放比没变）
+
+        if (animate and not base_changed and config.HOME_SELECT_ANIM_MS > 0
+                and abs(scale - self._scale) > 1e-6):
+            self._anim.stop()
+            self._anim.setDuration(config.HOME_SELECT_ANIM_MS)
+            self._anim.setStartValue(self._scale)
+            self._anim.setEndValue(float(scale))
+            self._anim.start()
+        else:
+            self._anim.stop()
+            self._set_scale(scale)           # 内含 _apply_size()
+
+    def _apply_size(self):
+        """按当前 `_base_*` 与 `_scale` 算出实际尺寸并重排。
 
         ⚠ 尺寸没变就直接返回。窗口 resize 时所有卡都会各调一次，
-        每次都重新 scale 一遍大图会很卡。
+        而且动画期间每帧都会调 —— 每次都重新 scale 一遍大图会很卡。
         """
-        w = max(48, int(w))
-        h = max(72, int(h))
+        w = max(48, int(round(self._base_w * self._scale)))
+        h = max(72, int(round(self._base_h * self._scale)))
         if self._refit_done == (w, h):
             return
         self._refit_done = (w, h)
 
         self.setFixedSize(w, h)
+        self._move_to_center()
         pad = max(4, int(w * 0.05))
         self._lay.setContentsMargins(pad, pad, pad, max(3, int(pad * 0.7)))
         self._lay.setSpacing(max(2, int(h * 0.012)))
@@ -326,7 +379,7 @@ class HomePage(BasePage):
         if n == 0:
             return
         self._current = i % n          # 环绕
-        self._update()
+        self._update(animate=True)     # 选中变化 → "变大/缩小"走缓动
 
     def _prev(self):
         """向左：扁平顺序上一张（第一张再向左 → 最后一张）"""
@@ -350,7 +403,7 @@ class HomePage(BasePage):
     # ---- 点击 ----
     def _on_click_flat(self, flat: int):
         self._current = flat % max(1, len(self._cards))
-        self._update()
+        self._update(animate=True)
 
     def _on_double_flat(self, flat: int):
         self._on_click_flat(flat)
@@ -370,14 +423,16 @@ class HomePage(BasePage):
             self.inheritor_selected.emit(index)
 
     # ---- 布局 ----
-    def _update(self):
-        self._relayout()
+    def _update(self, animate: bool = False):
+        """`animate=True` 只在**选中变化**时用；窗口 resize 一律不做动画
+        （否则拖窗口时每张卡都在动）。"""
+        self._relayout(animate=animate)
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
         self._relayout()
 
-    def _relayout(self):
+    def _relayout(self, animate: bool = False):
         if not self._ready:
             return
         w, h = self.width(), self.height()
@@ -385,7 +440,7 @@ class HomePage(BasePage):
             return
 
         self._layout_title_and_seal(w, h)
-        self._layout_cards(w, h)
+        self._layout_cards(w, h, animate)
 
     def _layout_title_and_seal(self, w: int, h: int):
         f = QFont("STKaiti")
@@ -403,7 +458,7 @@ class HomePage(BasePage):
         self._seal.setFont(sf)
         self._seal.move(max(10, int(w * 0.018)), max(10, int(h * 0.028)))
 
-    def _layout_cards(self, w: int, h: int):
+    def _layout_cards(self, w: int, h: int, animate: bool = False):
         n = len(self._cards)
         if n == 0:
             return
@@ -434,11 +489,11 @@ class HomePage(BasePage):
         for i, card in enumerate(self._cards):
             row, col = divmod(i, per)
             sel = (i == self._current)
-            cw = int(round(base_w * (scale if sel else 1.0)))
-            ch = int(round(base_h * (scale if sel else 1.0)))
             card.set_selected(sel)
-            card.refit(cw, ch)
-            # 选中卡多出来的那几像素往左右各摊一半 —— 落在线槽里，不会碰到邻居
-            x = x0 + col * (base_w + gap) - (cw - base_w) // 2
-            y = y0 + row * (base_h + gap) - (ch - base_h) // 2
-            card.move(x, y)
+            # ⚠ 按**槽位的中心点**摆，不是左上角 —— 卡片在动画里尺寸一直在变，
+            #   按左上角对齐会让它"往右下角长"。按中心对齐才是围绕自己变大，
+            #   而多出来的那几像素正好落进槽位间隙里，不会碰到邻居。
+            card.place_at(x0 + col * (base_w + gap) + base_w / 2.0,
+                          y0 + row * (base_h + gap) + base_h / 2.0)
+            card.set_geometry_scale(scale if sel else 1.0, base_w, base_h,
+                                    animate=animate)

@@ -43,10 +43,17 @@ class _HomeBase(unittest.TestCase):
 
     def setUp(self):
         _need(len(PROJECTS) + len(INHERITORS), "卡片数据")
+        # ⚠ 这些用例关心的是"卡片**最终**摆在哪、多大"，不是动画过程。
+        #   不关掉缓动的话，`_move()` 之后卡片还停在起始尺寸上 ——
+        #   断言会**假绿**（选中卡和普通卡一样大，也就"不重叠"、也"都在窗口内"）。
+        #   缓动本身由 test_ui_feedback.py 的 TestSelectionEasing 负责。
+        self._saved_anim = config.HOME_SELECT_ANIM_MS
+        config.HOME_SELECT_ANIM_MS = 0
         self.page = HomePage()
         self.resize(1280, 800)
 
     def tearDown(self):
+        config.HOME_SELECT_ANIM_MS = self._saved_anim
         self.page.close()
 
     def resize(self, w, h):
