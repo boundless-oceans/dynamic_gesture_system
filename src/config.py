@@ -102,6 +102,11 @@ CAMERA_MIRROR_FEED = True
 # 把这个范围画出来，访客就知道该站哪里、手该伸到哪儿，也顺带减少
 # "画面里好几个人各做各的"带来的混乱。嫌乱可以关掉。
 CAMERA_SHOW_ZONE = True
+# 交互区框是否做"呼吸"（缓慢明暗）。
+# 它静止不动时在画面里就是一条虚线，很容易被忽略；呼吸一下能勾住视线，
+# 也显得整个系统"活着"。周期用 3 秒 —— 再快就像在报警了。
+CAMERA_ZONE_BREATH = True
+CAMERA_ZONE_BREATH_MS = 3000
 
 # ---- 帧缓冲 ----
 FRAME_BUFFER_MAX = 32         # 缓冲最多存多少帧

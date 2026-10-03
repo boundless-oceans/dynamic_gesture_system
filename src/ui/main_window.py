@@ -13,6 +13,7 @@ from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
 from src.ui.settings_page import SettingsPage
 from src.ui.inheritor_page import InheritorPage
+from src.ui.toast import ToastOverlay
 from src import config
 
 IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4}
@@ -39,8 +40,7 @@ class MainWindow(QMainWindow):
         self._pending_release=False
         self._cooldown_until=0.0
         self._hold_since=0.0       # 上次执行动作的时刻(ms)，只给 MAX_HOLD_MS 防死锁用
-        self._toast_until=0.0      # "已执行"提示截止时间(ms)
-        self._toast_text=""
+        self._toast_text=""        # 最近一次"已执行"的文案（显示由 self.toast 负责）
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
         # 换页：重置去抖（冷却要保留，理由见 _on_page_changed）
         self.stack.currentChanged.connect(self._on_page_changed)
@@ -59,6 +59,8 @@ class MainWindow(QMainWindow):
         self.pages["inheritor"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         # 摄像头
         self.cw=CameraWidget(self); self.cw.setFixedSize(320,240); self.cw.show()
+        # 操作提示（屏幕下方居中）。建在摄像头之后，免得被它盖住
+        self.toast=ToastOverlay(self)
         # 推理
         self.it=InferenceThread(self.frame_buffer,self.recognizer)
         self.it.result_ready.connect(self._on_result)
@@ -130,21 +132,20 @@ class MainWindow(QMainWindow):
                 self._cooldown_until = now + config.ACTION_COOLDOWN_MS
                 self._pending_release = False
             self._lg=None; self._gc=0
-        # "已执行"提示优先显示
-        if now < self._toast_until:
-            self.cw.set_custom(self._toast_text)
+        # 悬浮窗**始终显示识别结果**。"已执行"提示已搬到屏幕下方居中
+        # （src/ui/toast.py）—— 两者各说各的，访客既看得到模型认出了什么，
+        # 也看得到系统执行了什么，比原来"提示期间把识别结果顶掉"更有信息量。
+        cur=self._disp_label
+        # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
+        if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
+            self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
+            self.cw.set_confidence(str(dg), dc)
+        elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
+            # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
+            self.cw.set_confidence(cur, self._disp_conf)
         else:
-            cur=self._disp_label
-            # 允许更新显示的条件：达到显示门槛，且（当前无显示 / 同一个手势 / 新结果置信足够高才抢走）
-            if dc >= config.DISPLAY_CONFIDENCE and (cur is None or str(dg)==cur or dc >= config.DISPLAY_SWITCH_CONFIDENCE):
-                self._disp_label=str(dg); self._disp_conf=dc; self._disp_ts=now
-                self.cw.set_confidence(str(dg), dc)
-            elif cur is not None and (now - self._disp_ts) < config.DISPLAY_HOLD_MS:
-                # 保持当前显示（动态手势结束后不立刻变/不被中等置信错误类抢走）
-                self.cw.set_confidence(cur, self._disp_conf)
-            else:
-                self._disp_label=None
-                self.cw.set_confidence(None, dc)
+            self._disp_label=None
+            self.cw.set_confidence(None, dc)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:
@@ -186,14 +187,14 @@ class MainWindow(QMainWindow):
         # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
         self.it.mark_active()
         cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
-        # "已执行"提示（立即显示，约 0.8s 后恢复）；视频页的左/右实际是快退/快进
+        # "已执行"提示：屏幕下方居中弹一下（src/ui/toast.py）。
+        # 视频页的左/右实际是快退/快进，文案跟着改。
         label = CONTROL_CN.get(g, g)
         if g in ("swipe_left","swipe_right") and (
                 cn=="inheritor" or (cn=="detail" and self.pages["detail"].is_video_view())):
             label = "快退" if g=="swipe_left" else "快进"
-        self._toast_until = now + config.TOAST_MS
         self._toast_text = "✔ 已执行：" + label
-        self.cw.set_custom(self._toast_text)
+        self.toast.show_toast(self._toast_text)
         if cn=="home":
             if g=="click": self._go_detail(self.pages["home"].current_index())
             elif g=="swipe_left": self.pages["home"]._prev()
@@ -227,5 +228,7 @@ class MainWindow(QMainWindow):
         self.cw.setGeometry(self.width()-340,20,320,240); self.cw.raise_()
         self.bc.move(self.width()//2-100,self.height()-30); self.bc.raise_()
         self.bs.move(self.width()//2+2,self.height()-30); self.bs.raise_()
+        # 提示胶囊要贴着底部居中，窗口尺寸一变就得重算
+        self.toast.place()
     def closeEvent(self,e):
         self.it.stop(); self.cw.stop(); e.accept()

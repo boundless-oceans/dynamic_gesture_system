@@ -10,9 +10,10 @@
 
 测法是直接调用真实方法，用一个桩对象充当 MainWindow 实例——
 不构造任何窗口，因此不会拖起 WebEngine、摄像头和模型（除 torch 的导入外）。
-_ocg / _on_result 只依赖：stack.currentIndex()、pages[...]、cw.set_custom()、
-_go_detail()、it.mark_active()，以及 _lg/_gc/_pending_release/_cooldown_until/
-_hold_since/_toast_until 这些状态字段（改 MainWindow.__init__ 时要同步这里的桩）。
+_ocg / _on_result 只依赖：stack.currentIndex()、pages[...]、cw.set_confidence()、
+toast.show_toast()、_go_detail()、it.mark_active()，以及 _lg/_gc/_pending_release/
+_cooldown_until/_hold_since/_toast_text 这些状态字段
+（改 MainWindow.__init__ 时要同步这里的桩）。
 """
 import collections
 import os
@@ -97,8 +98,9 @@ class _Harness:
         self._pending_release = False    # 动作已执行、还在等访客松手
         self._cooldown_until = 0.0       # 松手之后冷却的截止时刻
         self._hold_since = 0.0           # 动作执行时刻，只给防死锁兜底用
-        self._toast_until = 0.0
         self._toast_text = ""
+        # "已执行"提示的落点（src/ui/toast.py）。桩只要能记录调用即可
+        self.toast = _Calls()
         # _on_result 的显示保持字段
         self._disp_label = None
         self._disp_conf = 0.0
@@ -494,6 +496,15 @@ class TestToast(_Base):
     def test_普通页面用控制名(self):
         self.h.fire("swipe_right")
         self.assertIn("向右", self.h._toast_text)
+
+    def test_提示真的被推给了胶囊控件(self):
+        """文案算对了还不够 —— 得真的送到屏幕上那个胶囊里。
+
+        （2026-10 把提示从右上角小字搬到屏幕下方居中的 `ToastOverlay` 之后加的。）
+        """
+        self.h.fire("swipe_right")
+        self.assertEqual(self.h.toast.calls, [("show_toast", self.h._toast_text)],
+                         "动作执行了却没把提示交给胶囊控件")
 
     def test_传承人页左右说快进快退(self):
         self.h._page_idx = IDX["inheritor"]

@@ -1,6 +1,7 @@
 """摄像头预览组件"""
 
 import json
+import math
 import time
 from collections import deque
 
@@ -25,6 +26,30 @@ def _load_labels():
 
 
 _LABELS = _load_labels()
+
+# 手势交互区框的透明度范围。关掉呼吸时用 STATIC，与加呼吸之前的样子一致
+# （所以"关掉开关"是真正的无变化，而不是换了个亮度）。
+ZONE_ALPHA_MIN = 130
+ZONE_ALPHA_MAX = 235
+ZONE_ALPHA_STATIC = 210
+
+
+def zone_breath_alpha(t_ms: float) -> int:
+    """交互区框此刻该用多大的透明度（0~255）。
+
+    刻意做成**纯函数**：呼吸效果本身没法单测，但"透明度随时间在上下限之间往返"
+    可以 —— 直接喂时间戳断言即可，不用起摄像头也不用等。
+
+    用 cos 波（0 → 1 → 0），首尾都落在最小值上，所以周期与周期之间不会"跳"一下。
+    """
+    if not config.CAMERA_ZONE_BREATH:
+        return ZONE_ALPHA_STATIC
+    period = config.CAMERA_ZONE_BREATH_MS
+    if period <= 0:
+        return ZONE_ALPHA_STATIC
+    phase = (t_ms % period) / float(period)
+    wave = 0.5 - 0.5 * math.cos(2.0 * math.pi * phase)
+    return int(round(ZONE_ALPHA_MIN + wave * (ZONE_ALPHA_MAX - ZONE_ALPHA_MIN)))
 
 
 class CameraWidget(QWidget):
@@ -152,13 +177,6 @@ class CameraWidget(QWidget):
         self._gesture_text.raise_()
         self._conf_text.raise_()
 
-    def set_custom(self, text: str):
-        """直接设置显示文本（用于"已执行"提示等），不带置信度"""
-        self._gesture_text.setText(text)
-        self._conf_text.setText("")
-        self._gesture_text.raise_()
-        self._conf_text.raise_()
-
     def _on_frame_ready(self):
         """每出一帧就记时间戳：看门狗靠它算「最近这段时间出了几帧」"""
         now = time.time() * 1000.0
@@ -203,11 +221,15 @@ class CameraWidget(QWidget):
 
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setPen(QPen(QColor(255, 179, 0, 210), 2, Qt.DashLine))
+        # 呼吸：让框缓慢明暗。它不动的话在画面里就是一条静止虚线，很容易被忽略 ——
+        # 这里每帧都会被重绘（_update_frame 约 33ms 一次），所以按时间算透明度即可，
+        # 不需要额外的定时器。
+        alpha = zone_breath_alpha(time.time() * 1000.0)
+        painter.setPen(QPen(QColor(255, 179, 0, alpha), 2, Qt.DashLine))
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(rect)
-        # 标语贴在框内顶部，避免压住画面主体
-        painter.setPen(QPen(QColor(255, 179, 0, 235)))
+        # 标语贴在框内顶部，避免压住画面主体（比框稍亮一点，保持主次）
+        painter.setPen(QPen(QColor(255, 179, 0, min(255, alpha + 25))))
         painter.setFont(QFont("Microsoft YaHei", 8, QFont.Bold))
         painter.drawText(rect.adjusted(4, 2, -4, 0),
                          Qt.AlignTop | Qt.AlignHCenter, "手势交互区 · 请将手伸入")
