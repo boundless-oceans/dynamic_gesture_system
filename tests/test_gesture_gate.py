@@ -414,27 +414,27 @@ class TestTriggerThreshold(_Base):
     """触发走平滑结果、且要过 CONFIDENCE_THRESHOLD"""
 
     def test_低于触发门槛不分发(self):
-        self.h._page_idx = IDX["map"]
+        self.h._page_idx = IDX["inheritor"]
         config.CONFIDENCE_THRESHOLD = 0.6
         for _ in range(4):
             self.h.on_result({"gesture": "5", "confidence": 0.5,
                               "raw_gesture": "5", "raw_confidence": 0.5})
-        self.assertEqual(self.h.page_calls("map"), [], "置信度不足不该触发")
+        self.assertEqual(self.h.page_calls("inheritor"), [], "置信度不足不该触发")
 
     def test_达到门槛后分发(self):
-        self.h._page_idx = IDX["map"]
+        self.h._page_idx = IDX["inheritor"]
         config.CONFIDENCE_THRESHOLD = 0.6
         for _ in range(2):
             self.h.on_result({"gesture": "5", "confidence": 0.9,
                               "raw_gesture": "5", "raw_confidence": 0.9})
-        self.assertEqual(self.h.page_calls("map"), ["pan_down"])
+        self.assertEqual(self.h.page_calls("inheritor"), ["next_person"])
 
     def test_未绑定的类别不分发(self):
-        self.h._page_idx = IDX["map"]
+        self.h._page_idx = IDX["inheritor"]
         for _ in range(4):
             self.h.on_result({"gesture": "0", "confidence": 0.99,   # B0A 单指指向，无映射
                               "raw_gesture": "0", "raw_confidence": 0.99})
-        self.assertEqual(self.h.page_calls("map"), [])
+        self.assertEqual(self.h.page_calls("inheritor"), [])
 
 
 class TestPageRouting(_Base):
@@ -477,15 +477,6 @@ class TestPageRouting(_Base):
         h.fire("swipe_left");  self.assertEqual(h.page_calls("inheritor")[-1], "seek_back")
         h.fire("swipe_right"); self.assertEqual(h.page_calls("inheritor")[-1], "seek_forward")
         h.fire("click");       self.assertEqual(h.page_calls("inheritor")[-1], "confirm")
-
-    def test_地图页(self):
-        h = self.h
-        h._page_idx = IDX["map"]
-        for g, m in (("swipe_up", "pan_up"), ("swipe_down", "pan_down"),
-                     ("swipe_left", "pan_left"), ("swipe_right", "pan_right"),
-                     ("zoom_in", "zoom_in"), ("zoom_out", "zoom_out")):
-            h.fire(g)
-            self.assertEqual(h.page_calls("map")[-1], m, f"{g} 应路由到 {m}")
 
     def test_3D页(self):
         h = self.h

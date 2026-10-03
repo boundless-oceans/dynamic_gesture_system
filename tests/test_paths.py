@@ -78,7 +78,7 @@ class TestDevMode(unittest.TestCase):
     def test_开发时内容文件都在(self):
         for rel in (("assets", "projects.json"), ("assets", "inheritors.json"),
                     ("assets", "gestures.json"),
-                    ("pages", "map.html"), ("pages", "viewer.html")):
+                    ("pages", "viewer.html")):
             self.assertTrue(os.path.exists(paths.resource_path(*rel)), rel)
 
 
@@ -237,7 +237,7 @@ class TestNoPathComputedFromFile(unittest.TestCase):
 
     打包后 `__file__` 指向只读的 `_internal/`，从它算出来的路径全是错的。
 
-    这是结构性守卫，比"逐个断言取值"更根本 —— `map_page` / `viewer_page` 这些是在
+    这是结构性守卫，比"逐个断言取值"更根本 —— `viewer_page` 这类页面是在
     `__init__` 里才拼路径的，没有模块级常量可以断言，只能从源头禁掉这种写法。
     """
 

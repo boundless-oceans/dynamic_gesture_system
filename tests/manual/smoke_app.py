@@ -21,6 +21,6 @@ if __name__ == "__main__":
     win.show()
     print("[冒烟] 主窗口已启动")
     print("  - 权重状态:", win.recognizer.status)
-    print("  - 6 个页面：传承人 / 首页 / 详情 / 3D / 设置 / 地图")
+    print("  - 5 个页面：传承人 / 首页 / 详情 / 3D / 设置")
     print("  - 用鼠标点按钮，或直接做手势；右上角是摄像头悬浮窗")
     sys.exit(app.exec())

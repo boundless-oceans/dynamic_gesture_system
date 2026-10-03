@@ -20,7 +20,6 @@ PAGES = [
     ("src.ui.detail_page", "DetailPage"),
     ("src.ui.settings_page", "SettingsPage"),
     ("src.ui.inheritor_page", "InheritorPage"),
-    ("src.ui.map_page", "MapPage"),
     ("src.ui.viewer_page", "ViewerPage"),
     ("src.ui.camera_widget", "CameraWidget"),
 ]
@@ -59,6 +58,20 @@ class TestPagesConstruct(unittest.TestCase):
         from src import config
         sp = _build("src.ui.settings_page", "SettingsPage")
         self.assertEqual(len(sp._sliders), len(config.TUNABLE))
+
+    def test_手势对照表每行列数与表头一致(self):
+        """表头与每行的列数必须对得上。
+
+        Qt **不报这个错** —— 多出来的格子被静默丢弃、少了的留白，
+        表面上看只是"表有点怪"。增删列时最容易漏掉某一行（删「地图」那列就是），
+        所以单独守一条结构性断言。
+        """
+        from src.ui import settings_page as sp
+        self.assertTrue(sp._ROWS, "手势表不该是空的")
+        for row in sp._ROWS:
+            with self.subTest(手势=row[0]):
+                self.assertEqual(len(row), len(sp._HEADERS),
+                                 "这一行的列数与表头对不上：%r" % (row,))
 
     def test_设置页滑条初值等于config当前值(self):
         from src import config

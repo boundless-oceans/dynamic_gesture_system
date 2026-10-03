@@ -63,7 +63,6 @@ class _ItemCard(QFrame):
 class HomePage(BasePage):
     item_selected = Signal(int)
     go_inheritor = Signal()
-    go_map = Signal()
 
     def __init__(self):
         super().__init__()
@@ -104,11 +103,9 @@ class HomePage(BasePage):
         seal.move(24,24)
 
     def _prev(self):
-        # 向左：选中左移一格；已在最左则进入高德地图
+        # 向左：选中左移一格；已在最左则**停住**（左端是边界，没有"上一页"可去）
         if self._current > 0:
             self._current -= 1; self._update()
-        else:
-            self.go_map.emit()
 
     def _next(self):
         # 向右：选中右移一格；已在最右则进入非遗传承人

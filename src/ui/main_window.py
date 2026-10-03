@@ -13,10 +13,9 @@ from src.ui.detail_page import DetailPage
 from src.ui.viewer_page import ViewerPage
 from src.ui.settings_page import SettingsPage
 from src.ui.inheritor_page import InheritorPage
-from src.ui.map_page import MapPage
 from src import config
 
-IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4,"map":5}
+IDX={"inheritor":0,"home":1,"detail":2,"viewer":3,"settings":4}
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -28,7 +27,7 @@ class MainWindow(QMainWindow):
         self.stack=QStackedWidget()
         self.pages={
             "inheritor":InheritorPage(),"home":HomePage(),"detail":DetailPage(),
-            "viewer":ViewerPage(),"settings":SettingsPage(),"map":MapPage()
+            "viewer":ViewerPage(),"settings":SettingsPage()
         }
         for p in self.pages.values(): self.stack.addWidget(p)
         self.stack.setCurrentIndex(1)
@@ -53,13 +52,11 @@ class MainWindow(QMainWindow):
         h=self.pages["home"]
         h.item_selected.connect(self._go_detail)
         h.go_inheritor.connect(self._enter_inheritor)
-        h.go_map.connect(lambda:self.stack.setCurrentIndex(5))
         self.pages["detail"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["detail"].go_viewer.connect(self._go_viewer)
         self.pages["viewer"].go_home.connect(lambda:self.stack.setCurrentIndex(2))
         self.pages["settings"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         self.pages["inheritor"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
-        self.pages["map"].go_home.connect(lambda:self.stack.setCurrentIndex(1))
         # 摄像头
         self.cw=CameraWidget(self); self.cw.setFixedSize(320,240); self.cw.show()
         # 推理
@@ -225,16 +222,6 @@ class MainWindow(QMainWindow):
             elif g=="swipe_down": p.next_person()        # 向下抛出 = 下一位
             elif g=="swipe_up": p.prev_person()          # 向上抛出 = 上一位
             elif g=="click": p.confirm()                 # 点击 = 返回
-        elif cn=="map":
-            p=self.pages["map"]
-            # 四个方向抛出 → 地图平移
-            if g=="swipe_up": p.pan_up()
-            elif g=="swipe_down": p.pan_down()
-            elif g=="swipe_left": p.pan_left()
-            elif g=="swipe_right": p.pan_right()
-            elif g=="zoom_in": p.zoom_in()               # 张开两次 → 地图放大
-            elif g=="zoom_out": p.zoom_out()             # 握拳(缩小) → 地图缩小
-            elif g=="click": p.activate_selected()       # 确认"返回"
     def resizeEvent(self,e):
         super().resizeEvent(e)
         self.cw.setGeometry(self.width()-340,20,320,240); self.cw.raise_()

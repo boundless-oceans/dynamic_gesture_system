@@ -3,13 +3,11 @@
 守的是两件**会静默失效**的事：
 
   * **JS 输出被丢掉** —— 默认的 `QWebEnginePage` 会把 `console.log` 和未捕获的
-    JS 异常直接扔了。3D 页和地图页都靠 JS 驱动，页面白了你却什么都看不到。
-    地图页尤其要紧：它是**唯一依赖网络**的页面（高德瓦片），断网时的表现
-    就是一张空白图加**零条诊断**。（实际踩到过：地图页一直没装转发。）
+    JS 异常直接扔了。3D 页完全靠 JS 驱动，页面白了你却什么都看不到。
+    （当初有两个 WebEngine 页面，其中一个漏装了转发 —— 白屏时零条诊断。）
 
   * **改了 HTML 不生效** —— QtWebEngine 缓存本地页面，改完重启还是旧的。
-    挂 mtime 当查询串绕开。（`viewer_page` 早就做了，`map_page` 漏着，
-    同一个坑踩了两次。）
+    挂 mtime 当查询串绕开。（早先两个页面里只有一个做了，同一个坑踩了两次。）
 """
 import contextlib
 import io
@@ -36,7 +34,7 @@ def setUpModule():
 class TestLocalUrl(unittest.TestCase):
 
     def test_指向该文件的绝对路径(self):
-        p = os.path.join(REPO, "pages", "map.html")
+        p = os.path.join(REPO, "pages", "viewer.html")
         url = local_url(p)
         self.assertTrue(url.isLocalFile())
         self.assertEqual(os.path.normcase(os.path.abspath(url.toLocalFile())),
@@ -44,7 +42,7 @@ class TestLocalUrl(unittest.TestCase):
 
     def test_带上版本号(self):
         """没有它 WebEngine 会拿缓存里的旧页面，改了 HTML 也不生效"""
-        p = os.path.join(REPO, "pages", "map.html")
+        p = os.path.join(REPO, "pages", "viewer.html")
         self.assertIn("v=", local_url(p).query())
 
     def test_版本号跟着文件修改时间走(self):
@@ -65,13 +63,13 @@ class TestLocalUrl(unittest.TestCase):
 
 
 class TestPagesUseTheTools(unittest.TestCase):
-    """防回归：两个网页页面都必须装上转发、都用带版本号的 URL。
+    """防回归：网页页面必须装上转发、并且用带版本号的 URL。
 
-    地图页曾经直接用裸的 `QWebEngineView()`，JS 报错全被吞掉。
+    （曾经有两个 WebEngine 页面，其中一个直接用裸的 `QWebEngineView()`，
+    JS 报错全被吞掉 —— 白屏时零条诊断。这条守住它不再发生。）
     """
 
-    PAGES = [("src.ui.map_page", "MapPage"),
-             ("src.ui.viewer_page", "ViewerPage")]
+    PAGES = [("src.ui.viewer_page", "ViewerPage")]
 
     def _build(self, module, cls):
         mod = __import__(module, fromlist=[cls])
@@ -102,7 +100,7 @@ class TestPagesUseTheTools(unittest.TestCase):
                 self.assertTrue(lines, "%s 没有打印加载的 URL" % cls)
                 self.assertIn("v=", lines[-1],
                               "%s 的 URL 没版本号 —— 改完 HTML 会被缓存挡住" % cls)
-                self.assertIn("map.html" if cls == "MapPage" else "viewer.html",
+                self.assertIn("viewer.html",
                               lines[-1], "%s 加载的不是预期的文件" % cls)
 
 
