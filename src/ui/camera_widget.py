@@ -98,6 +98,15 @@ class CameraWidget(QWidget):
         self._conf_text.setFont(QFont("Consolas", 16))
         self._conf_text.setStyleSheet("color: #f00; background: transparent;")
 
+        # 静态手势（HaGRID 34 类）的读数。**诊断用**，见 config.CAMERA_SHOW_STATIC ——
+        # 上面两行是动态模型（认"手的动作"），这一行是静态模型（认"手此刻的形状"），
+        # 两个模型、两回事，摆在一起是为了现场核对"不裁手到底行不行"。
+        self._static_text = QLabel("", self)
+        self._static_text.setFixedWidth(240)
+        self._static_text.move(2, 48)
+        self._static_text.setFont(QFont("Consolas", 12))
+        self._static_text.setStyleSheet("color: #00e5ff; background: transparent;")
+
         self._timer.timeout.connect(self._update_frame)
 
     def start(self, frame_buffer: FrameBuffer):
@@ -168,6 +177,7 @@ class CameraWidget(QWidget):
         self._label.setText("摄像头未开启")
         self._gesture_text.setText("")
         self._conf_text.setText("")
+        self._static_text.setText("")
         self.update()
 
     def set_confidence(self, gesture: str | None, confidence: float):
@@ -176,6 +186,18 @@ class CameraWidget(QWidget):
         self._conf_text.setText(f"{confidence*100:.1f}%")
         self._gesture_text.raise_()
         self._conf_text.raise_()
+
+    def set_static(self, label: str | None, confidence: float):
+        """显示静态手势模型（HaGRID 34 类）的读数。**诊断用**。
+
+        关掉 `config.CAMERA_SHOW_STATIC` 就连控件一起藏起来，不留一行空白。
+        """
+        if not config.CAMERA_SHOW_STATIC or label is None:
+            self._static_text.setVisible(False)
+            return
+        self._static_text.setVisible(True)
+        self._static_text.setText(f"静态: {label} {confidence*100:.0f}%")
+        self._static_text.raise_()
 
     def _on_frame_ready(self):
         """每出一帧就记时间戳：看门狗靠它算「最近这段时间出了几帧」"""
@@ -297,3 +319,5 @@ class CameraWidget(QWidget):
         self._label.setPixmap(self._draw_zone(pixmap, w, h))
         self._gesture_text.raise_()
         self._conf_text.raise_()
+        if self._static_text.isVisible():
+            self._static_text.raise_()

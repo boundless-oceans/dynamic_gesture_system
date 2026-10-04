@@ -5,6 +5,7 @@ from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
+from src.core.static_gesture import StaticGestureRecognizer, action_for as static_action
 from src.core.gesture_mapper import index_to_control, CONTROL_CN
 from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
@@ -27,6 +28,9 @@ class MainWindow(QMainWindow):
         self.resize(1280,800)
         self.frame_buffer=FrameBuffer()
         self.recognizer=GestureRecognizer()
+        # 静态手势模型（认"手此刻的形状"）。权重缺失时 status != "ok"，
+        # 整条路自动静默跳过 —— 动态手势不受任何影响
+        self.static=StaticGestureRecognizer()
         self.stack=QStackedWidget()
         self.pages={
             "inheritor":InheritorPage(),"home":HomePage(),"detail":DetailPage(),
@@ -44,6 +48,9 @@ class MainWindow(QMainWindow):
         #    判定在 _on_result 里，用的是触发用的同一个量（平滑置信度）。
         self._need_gap=False
         self._hold_since=0.0       # 上次触发时刻(ms)，只给 MAX_HOLD_MS 防死锁用
+        # 静态手势是**另一条通道**，间隙和去抖都各管各的（理由见 _on_static / _ocg）
+        self._static_need_gap=False
+        self._static_lg=None; self._static_count=0
         self._toast_text=""        # 最近一次"已执行"的文案（显示由 self.toast 负责）
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
         # 换页：重置去抖（冷却要保留，理由见 _on_page_changed）
@@ -70,7 +77,7 @@ class MainWindow(QMainWindow):
         # 操作提示（屏幕下方居中）。建在摄像头之后，免得被它盖住
         self.toast=ToastOverlay(self)
         # 推理
-        self.it=InferenceThread(self.frame_buffer,self.recognizer)
+        self.it=InferenceThread(self.frame_buffer,self.recognizer,self.static)
         self.it.result_ready.connect(self._on_result)
         # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
         self._wire_idle_source()
@@ -167,6 +174,15 @@ class MainWindow(QMainWindow):
         else:
             self._disp_label=None
             self.cw.set_confidence(None, dc)
+        # ---- 静态手势（架构 A：只做加法）----
+        # ⚠ 放在动态那一段**之前**，而且**不 return** —— 这一路只对 ok / 点赞说话，
+        #   判成别的类就是弃权，动态照常走。
+        st=r.get("static")
+        if st is None:
+            self.cw.set_static(None,0.0)
+        else:
+            self.cw.set_static(st.get("label"),st.get("confidence",0.0))
+        self._on_static(st)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:
@@ -184,34 +200,79 @@ class MainWindow(QMainWindow):
             return
         c=index_to_control(gid)
         if c: self._ocg(c)
-    def _ocg(self,g):
+    def _on_static(self,st):
+        """静态手势通道（架构 A：**只做加法**）。
+
+        只对**绑定的那两个类**（ok / 点赞）说话；判成别的类一律**弃权** ——
+        动态模型照旧、不受任何影响。所以这个模型判错绝大多数类时产生不了后果。
+        """
+        if st is None:
+            # 没有静态结果（权重缺失 / 这一路出错）→ 当作"条件不成立"处理，
+            # 免得它一旦恢复反而被旧状态挡住
+            self._static_need_gap=False; self._static_lg=None; self._static_count=0
+            return
+        action=static_action(st.get("label"),st.get("confidence",0.0))
+        if action is None:
+            # 触发条件**不成立**了（不是绑定的类，或没够门槛）——
+            # 这就是**静态通道自己的间隙**：姿势一松开就记上，下次才允许再触发。
+            # ⚠ 这一条是"举着 OK 不动不会一直回首页"的唯一保证。
+            self._static_need_gap=False
+            self._static_lg=None; self._static_count=0
+            return
+        # 连续 STATIC_CONSISTENCY 帧都判成同一个绑定动作才触发。
+        # 静态姿势是**被保持**的，多等一帧几乎不花钱，而单帧的误判会被挡掉。
+        if action==self._static_lg: self._static_count+=1
+        else: self._static_lg=action; self._static_count=1
+        if self._static_count<config.STATIC_CONSISTENCY: return
+        self._ocg(action,source="static")
+    def _ocg(self,g,source="dynamic"):
         now=time.time()*1000.0
         # ============ 防重复触发：两道，都很短，且都不依赖机器快慢 ============
         # ① 间隙：上次触发之后，触发条件还没"断"过 → 不响应。
-        #    同一个手势一直被识别时靠这条挡住（判定在 _on_result）
-        if self._need_gap:
+        #
+        # ⚠ **两条通道各管各的间隙**，判据不同、绝不能合用：
+        #     动态看"平滑置信度有没有掉下 CONFIDENCE_THRESHOLD"（判定在 _on_result）
+        #     静态看"那个姿势有没有松开"（判定在 _on_static）
+        #   合用会互相锁死 —— 举个真实的：比完 OK 手还没放下，动态模型很可能
+        #   持续报 B0A 单指指向（OK 的手型里就有那根伸出的食指），于是动态那条
+        #   间隙永远等不来，访客想接着翻页最长被憋 MAX_HOLD_MS 3 秒。
+        if source=="static":
+            if self._static_need_gap:
+                return
+        elif self._need_gap:
             # 防死锁：万一模型对静止画面一直报同一个手势、门槛之上不下来，
             # 就永远等不到间隙。超过 MAX_HOLD_MS 强制放行 —— 宁可偶尔多触发一次，
             # 也不能让整个展台对任何手势都没反应（那种坏法不报错、看着一切正常）。
+            #
+            # ⚠ 静态通道**没有**这一层，也不需要：举着一个姿势不动本来就该只触发
+            #   一次（间隙要求的是"松手"，那个条件访客完全控制得了）。
             if (now - self._hold_since) >= config.MAX_HOLD_MS:
                 self._need_gap = False
                 self._cooldown_until = now + config.ACTION_COOLDOWN_MS
             else:
                 return
-        # ② 冷却：从**触发**时刻起算
+        # ② 冷却：从**触发**时刻起算。**两条通道共用** —— 一次只执行一个动作，
+        #    "刚比完 OK 就抛一下"不该两个都生效。
         if now < self._cooldown_until:
             return
         # 去抖：连续 N 次相同动作才触发。默认 N=1 → 一次即触发。
         # ⚠ 这里**不能**像原来那样在"手势变了"那一支直接 return ——
         # 那样第一次永远轮不到触发，N=1 就变成了空转。
-        if g==self._lg: self._gc+=1
-        else: self._lg=g; self._gc=1
-        if self._gc<config.CONSISTENCY_COUNT: return
-        self._gc=0
+        #
+        # ⚠ **静态通道不走这里**：它有自己的"连续 STATIC_CONSISTENCY 帧"计数
+        #   （见 _on_static），而 _lg/_gc 是动态通道的状态，混进来会互相清零。
+        if source=="dynamic":
+            if g==self._lg: self._gc+=1
+            else: self._lg=g; self._gc=1
+            if self._gc<config.CONSISTENCY_COUNT: return
+            self._gc=0
         # 执行了动作 → 冷却**从这一刻起算**，并要求一个"间隙"才允许下次触发
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
-        self._need_gap = True
-        self._hold_since = now
+        if source=="static":
+            self._static_need_gap = True
+        else:
+            self._need_gap = True
+            self._hold_since = now
         # 到这里闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
         # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
         # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
@@ -226,6 +287,17 @@ class MainWindow(QMainWindow):
             label = "快退" if g=="swipe_left" else "快进"
         self._toast_text = "✔ 已执行：" + label
         self.toast.show_toast(self._toast_text)
+        # ---- 全局动作：**不跟当前页面走**，任何页面上都生效 ----
+        # 这两个只有静态手势（ok / 点赞）会产出，所以放在页面分发之前。
+        if g=="home":
+            self.stack.setCurrentIndex(IDX["home"])
+            return
+        if g=="guide":
+            # 先切标签页再换页：设置页停在「参数调节」时，访客比个赞会看到一屏滑条，
+            # 莫名其妙。先切好，页面出现时就已经是「手势说明」了（也不会看到跳一下）。
+            self.pages["settings"].show_gestures()
+            self.stack.setCurrentIndex(IDX["settings"])
+            return
         if cn=="home":
             hp=self.pages["home"]
             # 单击 = 激活选中项：项目卡进详情页、传承人卡进传承人页那一位

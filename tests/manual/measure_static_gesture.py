@@ -8,8 +8,7 @@
 **它回答什么问题**
 
 评审要求"加 OK / 点赞这类静态手势"。素材项目的权重是个 **34 类 ResNet18 分类器**，
-其中第 33 类是 **no_gesture** —— 这正是治"走路被认成抛出"要的那个信号：
-模型能直接说"这只手没在做手势"，比"有没有检测到手"更准。
+其中第 33 类是 **no_gesture**。
 
 但那个分类器是吃**裁好的手**的：它的参考实现 `demo.py` 用 MediaPipe 先检测手、
 裁出来再分类。而我们**不想为它引入 mediapipe** —— 素材项目的 requirements 里
@@ -21,21 +20,23 @@
     --mode full   整帧直接喂
     --mode zone   只喂"中央交互区"（与动态模型看到的同一块画面，见 model_view_rect）
 
-判据：
+⚠ 这个脚本**用的就是生产代码的那一份**（`static_gesture.LABELS` / `.preprocess`），
+  不是另抄一份 —— 否则测出来的不是真管线，测了也白测。
 
-  * 做 ok / 点赞时，top1 是否稳定命中对应类
-  * **不做手势、手放在画面里时，top1 是否稳定是 `no_gesture`** ← 这条最难也最关键
-  * 中途走开/走过时，会不会冒出高分手势类
+要跑的四个场景（前两个决定架构 A 能不能上，后两个决定架构 B）：
 
-zone 或 full 能分清 → **零新依赖**，直接进方案；
+  | --label      | 关心的 |
+  |---|---|
+  | `OK`         | top1 是否稳定命中 `ok`（架构 A 的绑定之一）|
+  | `点赞`       | top1 是否稳定命中 `like`（架构 A 的绑定之二）|
+  | `不做手势`   | top1 是否稳定是 `no_gesture` ← **最难也最关键** |
+  | `做动态手势` | 做向左/向右抛、单击时，静态模型输出什么 ← **决定架构 B 可不可行** |
+
+判据：前两个 + 第三个都能分清 → **零新依赖**，架构 A 直接上；
 分不清 → 才需要回来讨论要不要为 mediapipe 降 protobuf。
 
-**预处理**严格照抄素材项目 `configs/ResNet18.yaml` 的 `test_transforms`
-（LongestMaxSize(224) → PadIfNeeded(224, 灰 144) → Normalize）。
-⚠ 注意它的 mean/std 与动态模型那组（ImageNet）**不同**，两者不能混用。
-
-**权重从哪来**：素材项目里的 `downloads/ResNet18.pth`（约 89MB）。
-用 `--weights` 指过去即可；想固定下来的话，把它拷进仓库的 `weights/` 再用默认值。
+**权重**：默认取仓库里的 `weights/hagrid_resnet18.pth`（素材盘的 ResNet18.pth 拷过来），
+`--weights` 可以指别处。
 """
 
 import argparse
@@ -44,10 +45,7 @@ import sys
 import time
 from collections import Counter
 
-import cv2
-import numpy as np
 import torch
-from torchvision.models import resnet18
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 
@@ -55,21 +53,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import model_view_rect
+from src.core.static_gesture import LABELS, NUM_CLASSES, NO_GESTURE, preprocess
 from src.ui.camera_widget import CameraWidget
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_WEIGHTS = os.path.join(REPO, "weights", "hagrid_resnet18.pth")
-
-# 34 类，顺序即模型输出下标（素材项目 constants.py 的 targets）
-LABELS = [
-    "grabbing", "grip", "holy", "point", "call", "three3", "timeout", "xsign",
-    "hand_heart", "hand_heart2", "little_finger", "middle_finger", "take_picture",
-    "dislike", "fist", "four", "like", "mute", "ok", "one", "palm", "peace",
-    "peace_inverted", "rock", "stop", "stop_inverted", "three", "three2", "two_up",
-    "two_up_inverted", "three_gun", "thumb_index", "thumb_index2", "no_gesture",
-]
-NUM_CLASSES = len(LABELS)
-NO_GESTURE = LABELS.index("no_gesture")
 
 # 只是为了让终端好读，不参与任何判断
 CN = {
@@ -78,39 +66,16 @@ CN = {
     "no_gesture": "无手势", "mute": "嘘", "rock": "摇滚",
 }
 
-IMG_SIZE = 224
-MEAN = np.array([0.54, 0.499, 0.474], dtype=np.float32)
-STD = np.array([0.234, 0.235, 0.231], dtype=np.float32)
-PAD_VALUE = 144          # PadIfNeeded 的填充值（灰）
-
 
 def cn(name: str) -> str:
     return CN.get(name, name)
 
 
-def preprocess(img: np.ndarray) -> torch.Tensor:
-    """照抄 HaGRID 的 test_transforms：LongestMaxSize → PadIfNeeded → Normalize
-
-    输入是**已经转好的 RGB**（帧缓冲里存的就是 RGB，见 camera.py）。
-    albumentations 的 Normalize(max_pixel_value=255) 等价于 (x/255 - mean) / std。
-    """
-    h, w = img.shape[:2]
-    scale = IMG_SIZE / float(max(h, w))
-    nw = max(1, int(round(w * scale)))
-    nh = max(1, int(round(h * scale)))
-    resized = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
-    canvas = np.full((IMG_SIZE, IMG_SIZE, 3), PAD_VALUE, dtype=np.uint8)
-    top, left = (IMG_SIZE - nh) // 2, (IMG_SIZE - nw) // 2
-    canvas[top:top + nh, left:left + nw] = resized
-    x = canvas.astype(np.float32) / 255.0
-    x = (x - MEAN) / STD
-    return torch.from_numpy(x.transpose(2, 0, 1))[None]
-
-
 def load_model(path: str):
     if not os.path.isfile(path):
         sys.exit("[测量] 找不到权重：%s\n"
-                 "用 --weights 指到素材项目的 downloads/ResNet18.pth" % path)
+                 "把素材盘的 downloads/ResNet18.pth 拷成这个路径，或用 --weights 指过去" % path)
+    from torchvision.models import resnet18
     sd = torch.load(path, map_location="cpu", weights_only=False)
     state = sd["MODEL_STATE"] if isinstance(sd, dict) and "MODEL_STATE" in sd else sd
     model = resnet18(num_classes=NUM_CLASSES)

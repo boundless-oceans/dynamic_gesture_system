@@ -34,6 +34,23 @@ def model_view_rect(frame_w: int, frame_h: int) -> tuple:
     return ((frame_w - w) / 2.0, (frame_h - h) / 2.0, w, h)
 
 
+def static_input_frame(frame: np.ndarray) -> np.ndarray:
+    """静态手势模型实际吃的那块画面。
+
+    默认吃**中央交互区**（与动态模型能看到的范围**同一块**）—— 参考实现是先用
+    MediaPipe 检测手再裁出来喂，而我们不想为它引入 mediapipe（要求降级 protobuf，
+    会动共享环境），所以先试"不裁手"。够不够是 `tests/manual/measure_static_gesture.py`
+    要回答的问题；不行再回来讨论。
+
+    ⚠ 两个模型吃同一块画面，是"手型冲突"那条结论的前提（见 gesture_mapper
+    的 STATIC_TO_CONTROL）：同一个手型会**同时**喂进两边。
+    """
+    if config.STATIC_INPUT != "zone" or frame is None or frame.size == 0:
+        return frame
+    x, y, w, h = model_view_rect(frame.shape[1], frame.shape[0])
+    return frame[int(y):int(y + h), int(x):int(x + w)]
+
+
 class GestureRecognizer:
     """DSTE-Net 手势识别器"""
 
@@ -170,14 +187,21 @@ class InferenceThread(QThread):
     """推理线程：定时从帧缓冲取帧，送入模型推理
 
     长时间识别不到手势时按 IDLE_LADDER 逐档降低推理频率（空闲降频）。
+
+    同一轮里还会跑一次**静态手势模型**（若启用），结果挂在 `res["static"]` 上。
+    放在同一个循环里而不是另起线程：单次约 10ms，相对动态模型的 583ms 可忽略，
+    另起线程反而多一份 CPU 争抢。
     """
 
     result_ready = Signal(dict)  # {"gesture": str, "confidence": float, "top3": list}
 
-    def __init__(self, frame_buffer, recognizer: GestureRecognizer):
+    def __init__(self, frame_buffer, recognizer: GestureRecognizer, static=None):
         super().__init__()
         self.frame_buffer = frame_buffer
         self.recognizer = recognizer
+        # 静态手势识别器（src/core/static_gesture.py）。None / 权重缺失时整条路静默跳过
+        self.static = static
+        self._static_fails = 0
         self._running = False
         # 最近一次"**真的执行了动作**"的时刻（毫秒）。空闲降频按它算空闲了多久。
         # ⚠ 别改成"识别到高置信手势"——实测访客走路时也有 15.5% 的采样 ≥0.8，
@@ -212,6 +236,27 @@ class InferenceThread(QThread):
             return config.INFERENCE_INTERVAL_MS
         return config.IDLE_LADDER[min(step, len(config.IDLE_LADDER) - 1)][1]
 
+    def predict_static(self, frame):
+        """跑一次静态手势模型；不可用或出错时返回 None。
+
+        ⚠ **独立 try** —— 静态这一路坏掉不能连累动态手势（动态才是主线）。
+        但也**不静默**：第一次和之后每 50 次会打一行，免得"一直不生效却没人知道"。
+        """
+        if self.static is None or self.static.status != "ok":
+            return None
+        try:
+            out = self.static.predict(static_input_frame(frame))
+        except Exception as e:
+            self._static_fails += 1
+            if self._static_fails == 1 or self._static_fails % 50 == 0:
+                print(f"[Inference] 静态手势异常（第 {self._static_fails} 次），本帧弃权: {e}",
+                      flush=True)
+            return None
+        if self._static_fails:
+            print(f"[Inference] 静态手势已恢复正常（此前异常 {self._static_fails} 次）", flush=True)
+            self._static_fails = 0
+        return out
+
     def run(self):
         self._running = True
         self.mark_active()
@@ -242,6 +287,9 @@ class InferenceThread(QThread):
                     idx = np.linspace(0, len(window) - 1, config.NUM_SEGMENTS).round().astype(int)
                     clip = [window[i] for i in idx]
                     res = self.recognizer.predict(clip)
+                    # 静态手势：用**最新那一帧**（它认的是"此刻"，不是"刚才"）。
+                    # 取窗口中间或开头都会让它慢半拍，而它本来就慢不过动态模型。
+                    res["static"] = self.predict_static(window[-1])
                     # ⚠ 这里**刻意不再**按置信度刷新"活跃"时刻。
                     #
                     # 曾经是"raw 置信度 ≥ CONFIDENCE_THRESHOLD 就算活跃"，但实测

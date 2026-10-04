@@ -11,7 +11,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # 无显示器也能跑
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
 
 _app = None
 
@@ -67,11 +67,39 @@ class TestPagesConstruct(unittest.TestCase):
         所以单独守一条结构性断言。
         """
         from src.ui import settings_page as sp
-        self.assertTrue(sp._ROWS, "手势表不该是空的")
-        for row in sp._ROWS:
-            with self.subTest(手势=row[0]):
-                self.assertEqual(len(row), len(sp._HEADERS),
-                                 "这一行的列数与表头对不上：%r" % (row,))
+        for rows, headers, what in ((sp._ROWS, sp._HEADERS, "动态"),
+                                    (sp._STATIC_ROWS, sp._STATIC_HEADERS, "静态")):
+            self.assertTrue(rows, f"{what}手势表不该是空的")
+            for row in rows:
+                with self.subTest(表=what, 手势=row[0]):
+                    self.assertEqual(len(row), len(headers),
+                                     "这一行的列数与表头对不上：%r" % (row,))
+
+    def test_手势说明页有两张表(self):
+        """动态一张、静态一张。
+
+        静态那两个（OK / 点赞）**不跟页面走**，塞进按页面分列的那张表里
+        只能给每一列都填同一个动作，读起来更乱 —— 所以是分开的两张。
+        """
+        sp = _build("src.ui.settings_page", "SettingsPage")
+        tables = sp.findChildren(QTableWidget)
+        self.assertEqual(len(tables), 2, "手势说明页应当有动态、静态两张对照表")
+
+    def test_设置页有返回首页按钮且真的接到信号上(self):
+        """⚠ 这条是被一次真实事故逼出来的。
+
+        加 `show_gestures()` 时它被插进了 `_setup_ui` 的中间，于是后面那段
+        导航按钮的代码**整块被切进了新方法里** —— 页面**照样能构造**
+        （构造期一声不响），只是"返回首页"按钮整个消失了。
+        上面那条 `test_所有页面可构造` 拦不住这种坏法，要真的点一下才看得出来。
+        """
+        sp = _build("src.ui.settings_page", "SettingsPage")
+        got = []
+        sp.go_home.connect(lambda: got.append(1))
+        buttons = [b for b in sp.findChildren(QPushButton) if b.text() == "返回首页"]
+        self.assertTrue(buttons, "设置页没有「返回首页」按钮")
+        buttons[0].click()
+        self.assertEqual(got, [1], "「返回首页」按钮没接到 go_home 信号上")
 
     def test_设置页滑条初值等于config当前值(self):
         from src import config
@@ -91,13 +119,72 @@ class TestPagesConstruct(unittest.TestCase):
 class TestMainWindowConstruct(unittest.TestCase):
     """主窗口构造会真的搭一遍 ResNet-50 并加载权重，约 10 秒——但它是最有价值的一道冒烟。"""
 
-    def test_主窗口可构造且权重状态正常(self):
+    @classmethod
+    def setUpClass(cls):
         from src.ui.main_window import MainWindow
-        win = MainWindow()
+        cls.win = MainWindow()          # 建一次，几条用例共用（构造很贵）
         _app.processEvents()
-        self.assertEqual(win.recognizer.status, "ok",
-                         f"权重状态异常: {win.recognizer.status} {win.recognizer.status_detail}")
-        win.close()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.win.close()
+
+    def test_主窗口可构造且权重状态正常(self):
+        self.assertEqual(self.win.recognizer.status, "ok",
+                         f"权重状态异常: {self.win.recognizer.status} "
+                         f"{self.win.recognizer.status_detail}")
+
+    def test_静态手势权重状态正常(self):
+        """静态权重没随版本库分发（.gitignore）。缺失时应当是 missing，**不是崩**。"""
+        self.assertIn(self.win.static.status, ("ok", "missing"),
+                      f"静态手势状态异常: {self.win.static.status} "
+                      f"{self.win.static.status_detail}")
+
+    def test_静态手势接线真的通(self):
+        """架构 A 的**端到端**接线：喂一条 ok 的静态结果，主窗口真的回首页。
+
+        ⚠ 闸门逻辑本身由 tests/test_gesture_gate.py 用桩验（快、可控时钟）。
+        这里验的是**另一件事**：真实 MainWindow 上的接线有没有漏 ——
+        `self.static` 建了没、`cw.set_static` 在不在、设置页有没有 `show_gestures`。
+        这类漏掉**不报错**，只是那个手势永远不生效。
+        """
+        from src import config
+        from src.ui.main_window import IDX
+
+        def feed(label, conf):
+            for _ in range(config.STATIC_CONSISTENCY):
+                self.win._on_result({"gesture": "0", "confidence": 0.0,
+                                     "raw_gesture": "0", "raw_confidence": 0.0,
+                                     "static": {"label": label, "confidence": conf}})
+                _app.processEvents()
+
+        # 从详情页出发，"回首页"才看得出来
+        self.win.stack.setCurrentIndex(IDX["detail"])
+        self.win._cooldown_until = 0.0
+        _app.processEvents()
+        feed("ok", 0.99)
+        self.assertEqual(self.win.stack.currentIndex(), IDX["home"], "OK 手势没回首页")
+
+        # 点赞 → 设置页，且必须先把标签页切到「手势说明」
+        self.win.pages["settings"]._tabs.setCurrentIndex(1)   # 先人为停在「参数调节」
+        self.win._cooldown_until = 0.0
+        self.win._static_need_gap = False
+        feed("like", 0.99)
+        self.assertEqual(self.win.stack.currentIndex(), IDX["settings"])
+        self.assertEqual(self.win.pages["settings"]._tabs.currentIndex(), 0,
+                         "进设置页时没把标签页切到「手势说明」")
+
+    def test_没绑定的静态类不产生任何动作(self):
+        """端到端再确认一次"弃权" —— 架构 A 的安全感全在这上面。"""
+        from src.ui.main_window import IDX
+        self.win.stack.setCurrentIndex(IDX["home"])
+        self.win._cooldown_until = 0.0
+        before = self.win.stack.currentIndex()
+        for _ in range(3):
+            self.win._on_result({"gesture": "0", "confidence": 0.0,
+                                 "raw_gesture": "0", "raw_confidence": 0.0,
+                                 "static": {"label": "palm", "confidence": 0.99}})
+        self.assertEqual(self.win.stack.currentIndex(), before)
 
 
 if __name__ == "__main__":

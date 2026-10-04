@@ -107,6 +107,10 @@ class _Harness:
         self._cooldown_until = 0.0       # 冷却截止（从触发时刻起算）
         self._need_gap = False           # 触发条件还没"断"过
         self._hold_since = 0.0           # 上次触发时刻，只给防死锁兜底用
+        # ---- 静态手势通道（自有间隙 + 自有去抖，与上面那套无关）----
+        self._static_need_gap = False
+        self._static_lg = None
+        self._static_count = 0
         self._toast_text = ""
         # "已执行"提示的落点（src/ui/toast.py）。桩只要能记录调用即可
         self.toast = _Calls()
@@ -123,25 +127,35 @@ class _Harness:
         # widget() 恒返回 None：换页过渡在这套用例里不该被真的触发
         # （过渡本身由 tests/test_ui_feedback.py 的 TestPageTransitionWiring 负责）
         return types.SimpleNamespace(currentIndex=lambda: self._page_idx,
-                                     widget=lambda i: None)
+                                     widget=lambda i: None,
+                                     setCurrentIndex=self._set_page_idx)
+
+    def _set_page_idx(self, i):
+        """换页。真身 QStackedWidget 换完会发 currentChanged → _on_page_changed，
+        桩里手工补上这一段 —— 否则"换页后残留手势"那类用例的前提就不成立了
+        （静态手势的 ok→回首页 也走这条路）。"""
+        self._on_page_changed(i)
 
     def _go_detail(self, i):
         self.detail_arg = i
 
     # 方法名必须和真身一致：_on_result 内部会回调 self._ocg(c)，
     # 桩上没有 _ocg 就会 AttributeError。ocg/on_result 只是好写的别名。
-    def _ocg(self, g):
-        MainWindow._ocg(self, g)
+    def _ocg(self, g, source="dynamic"):
+        MainWindow._ocg(self, g, source=source)
 
     def _on_result(self, r):
         MainWindow._on_result(self, r)
+
+    def _on_static(self, st):
+        MainWindow._on_static(self, st)
 
     def _on_page_changed(self, idx):
         self._page_idx = idx
         MainWindow._on_page_changed(self, idx)
 
-    def ocg(self, g):
-        self._ocg(g)
+    def ocg(self, g, source="dynamic"):
+        self._ocg(g, source=source)
 
     def on_result(self, r):
         self._on_result(r)
@@ -155,6 +169,9 @@ class _Harness:
         self._lg = None
         self._gc = 0
         self._need_gap = False
+        self._static_need_gap = False
+        self._static_lg = None
+        self._static_count = 0
         self._cooldown_until = 0.0
         for _ in range(max(1, config.CONSISTENCY_COUNT)):
             self.ocg(g)
@@ -183,15 +200,19 @@ class _Base(unittest.TestCase):
                        ("CONSISTENCY_COUNT", "ACTION_COOLDOWN_MS", "MAX_HOLD_MS",
                         "CONFIDENCE_THRESHOLD", "DISPLAY_CONFIDENCE",
                         "DISPLAY_SWITCH_CONFIDENCE",
-                        "SEEK_STEP_MS", "TOAST_MS")}
+                        "SEEK_STEP_MS", "TOAST_MS",
+                        "STATIC_CONSISTENCY", "STATIC_CONFIDENCE_THRESHOLD")}
         config.CONSISTENCY_COUNT = config.DEFAULTS["CONSISTENCY_COUNT"]
         config.ACTION_COOLDOWN_MS = config.DEFAULTS["ACTION_COOLDOWN_MS"]
+        config.STATIC_CONSISTENCY = 2          # 钉在**出厂值**，别跟着现场调参跑
+        config.STATIC_CONFIDENCE_THRESHOLD = 0.75
         config.SEEK_STEP_MS = 30000
         import src.ui.main_window as mw
         self._mw = mw
         self._real_time = mw.time
         self.h = _Harness()
         mw.time = self.h.clock          # 装上可控时钟
+        self._clock = self.h.clock      # 好写一点
 
     def tearDown(self):
         self._mw.time = self._real_time
@@ -490,6 +511,154 @@ class TestPageRouting(_Base):
             self.assertEqual(h.page_calls("viewer")[-1], m)
         h.fire("click")
         self.assertEqual(h.page_calls("viewer")[-1], "activate_selected")
+
+
+class TestStaticChannel(_Base):
+    """静态手势通道（架构 A）—— **只做加法**，而且**自己有一条间隙**
+
+    静态模型认的是"手此刻的形状"，与动态模型认的"手的动作"是两回事。
+    这一批守的是两个**坏了不会报错**的地方：
+
+      * **弃权**：判成没绑定的类时不能产生任何动作 —— 32 个类判错都不该有后果
+      * **自己的间隙**：举着一个静态姿势不动，不能一直重复触发。
+        静态姿势是**被保持**的，和转瞬即逝的动态手势性质完全不同，所以
+        动态那条间隙（看平滑置信度有没有掉下门槛）对它根本不适用
+
+    观察"到底触发了没有"用 `it.mark_active()` 的次数 —— 那是闸门放行的唯一出口，
+    比看页面调用可靠（比如 ok→回首页，本来就在首页时页面调用看不出来）。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.h.pages["home"] = _Calls()
+        self.h.pages["settings"] = _Calls()
+
+    def pose(self, label, conf=0.9):
+        """喂**一帧**静态结果"""
+        self.h._on_static({"label": label, "confidence": conf})
+
+    def pose_n(self, label, n, conf=0.9):
+        for _ in range(n):
+            self.pose(label, conf)
+
+    def fired(self):
+        return self.h.it.active_calls
+
+    def test_要连续两帧才触发(self):
+        """静态姿势是**被保持**的，多等一帧几乎不花钱，而单帧误判会被它挡掉。"""
+        self.assertEqual(config.STATIC_CONSISTENCY, 2, "前提：出厂默认值是 2")
+        self.pose("ok")
+        self.assertEqual(self.fired(), 0, "只看到一帧就触发了")
+        self.pose("ok")
+        self.assertEqual(self.fired(), 1, "连续两帧该触发")
+
+    def test_中间换手势要重新计数(self):
+        self.pose("ok")
+        self.pose("like")          # 不是同一个动作 → 计数从头开始
+        self.assertEqual(self.fired(), 0, "换过别的动作，不该凑够两帧")
+        self.pose("like")
+        self.assertEqual(self.fired(), 1)
+
+    def test_举着不动只触发一次(self):
+        """⚠ 这是静态通道最要紧的一条。
+
+        静态姿势是**举着不动**的 —— 要是没有"必须先松开"这条间隙，
+        1.5 秒冷却一过就会再触发一次，举着 OK 不放就一直往首页跳。
+        """
+        self.pose_n("ok", 2)
+        self.assertEqual(self.fired(), 1)
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 100)
+        self.pose_n("ok", 20)          # 举着不放，冷却早过了
+        self.assertEqual(self.fired(), 1, "姿势没松开过，不该重复触发")
+
+    def test_松开之后可以再触发(self):
+        self.pose_n("ok", 2)
+        self.pose("no_gesture")        # 手放下了
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 100)
+        self.pose_n("ok", 2)
+        self.assertEqual(self.fired(), 2, "松开过就该能再做一次")
+
+    def test_弃权_没绑定的类不产生任何动作(self):
+        """架构 A 的全部安全感都在这条上：模型判成别的类 = 弃权。
+
+        这里把**与在用的动态手势手型撞车**的那几类专门列出来 —— 它们最可能
+        被真的比划出来（访客做动态手势时静态模型就会看到这些手型）。
+        """
+        for label in ("palm", "stop", "fist", "point", "peace", "two_up",
+                      "middle_finger", "dislike", "three_gun", "no_gesture"):
+            with self.subTest(静态类=label):
+                self.h.pages["home"] = _Calls()
+                self.h.pages["settings"] = _Calls()
+                before = self.fired()
+                self.pose_n(label, 5, conf=0.99)
+                self.assertEqual(self.fired(), before, f"{label} 不该触发任何动作")
+                self.assertEqual(self.h.page_calls("settings"), [])
+                self.assertEqual(self.h.page_calls("home"), [])
+
+    def test_未达门槛不触发(self):
+        self.pose_n("ok", 5, conf=config.STATIC_CONFIDENCE_THRESHOLD - 0.01)
+        self.assertEqual(self.fired(), 0, "没过门槛不该触发")
+
+    def test_恰好等于门槛算成立(self):
+        self.pose_n("ok", 2, conf=config.STATIC_CONFIDENCE_THRESHOLD)
+        self.assertEqual(self.fired(), 1)
+
+    def test_ok回首页_任何页面都生效(self):
+        self.h._page_idx = IDX["viewer"]
+        self.pose_n("ok", 2)
+        self.assertEqual(self.h._page_idx, IDX["home"], "OK 手势应该从任何页面回首页")
+
+    def test_like进手势说明页并切到那一栏(self):
+        """⚠ "先切标签页再换页"这一句不能省 —— 否则操作员上次停在「参数调节」时，
+        访客比个赞会看到一屏滑条。"""
+        self.h._page_idx = IDX["detail"]
+        self.pose_n("like", 2)
+        self.assertEqual(self.h._page_idx, IDX["settings"])
+        self.assertIn("show_gestures", self.h.page_calls("settings"),
+                      "进设置页时必须先把标签页切到「手势说明」")
+
+    def test_两条通道的间隙互不影响(self):
+        """⚠ 这条守着这次最容易写错的一处。
+
+        动态那条间隙看"平滑置信度掉下门槛"，静态这条看"姿势松开没有"。
+        **合用一条会把对方锁死** —— 比完 OK 手还没放下时，动态模型很可能
+        持续报 B0A 单指指向（OK 的手型里就有那根伸出的食指），于是动态那条
+        间隙永远等不来，访客想接着翻页最长被憋 MAX_HOLD_MS 3 秒。
+        """
+        # 方向一：静态触发之后，动态那条通道不该被挡住
+        self.pose_n("ok", 2)
+        self.assertTrue(self.h._static_need_gap)
+        self.assertFalse(self.h._need_gap, "静态触发不该占用动态通道的间隙")
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS + 100)
+        self.h.ocg("swipe_right")
+        self.assertEqual(self.h.page_calls("home"), ["_next"],
+                         "静态触发之后，动态手势应当照常能做")
+
+        # 方向二：动态触发之后，静态那条通道不该被挡住
+        h = self.h
+        h.fire("swipe_right")
+        self.assertTrue(h._need_gap)
+        self.assertFalse(h._static_need_gap, "动态触发不该占用静态通道的间隙")
+        h.clock.advance(config.ACTION_COOLDOWN_MS + 100)
+        before = h.it.active_calls
+        self.pose_n("ok", config.STATIC_CONSISTENCY)
+        self.assertEqual(h.it.active_calls, before + 1,
+                         "动态触发之后，静态手势应当照常能做")
+
+    def test_冷却两条通道共用(self):
+        """一次只执行一个动作 —— 刚比完 OK 就抛一下，不该两个都生效。"""
+        self.pose_n("ok", 2)
+        self.assertEqual(self.fired(), 1)
+        self.h.clock.advance(config.ACTION_COOLDOWN_MS - 100)
+        self.h.ocg("swipe_right")
+        self.assertEqual(self.h.page_calls("home"), [], "冷却期内动态手势也不该生效")
+
+    def test_没有静态结果时解除间隙(self):
+        """权重缺失 / 这一路出错时喂 None，不能让它把间隙卡住。"""
+        self.pose_n("ok", 2)
+        self.h._on_static(None)
+        self.assertFalse(self.h._static_need_gap, "没有静态结果应视作条件不成立")
+        self.assertIsNone(self.h._static_lg)
 
 
 class TestToast(_Base):

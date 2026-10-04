@@ -27,9 +27,21 @@ _ROWS = [
     ("双指双击", "—",        "—",        "—",         "旋转模型"),
 ]
 
+# 静态手势（HaGRID 34 类 ResNet18）对照表。
+# ⚠ 这两个**不跟页面走** —— 在任何页面上都生效，所以单独一张表，不塞进上面
+#   那张按页面分列的表里（塞进去只能给每一列都填同一个动作，读起来更乱）。
+# 只绑这两个的理由见 gesture_mapper.STATIC_TO_CONTROL：其余静态类的手型都与
+# **在用的动态手势**撞车（张开手掌撞"张开两次"、握拳撞"缩小"、食指撞"单击"、
+# 两指撞"双指指向"），而两个模型吃的是同一块画面，会同时被同一只手点燃。
+_STATIC_HEADERS = ["手势", "动作"]
+_STATIC_ROWS = [
+    ("OK 手势", "返回首页"),
+    ("点赞",    "进入手势说明页"),
+]
+
 _FOOTNOTES = [
     "详情页的「非遗详情」子页：向左/向右变为视频快退/快进，单击返回主视图。",
-    "未列出的手势（单指指向、双击、双指点击）不触发任何操作；"
+    "上表中未列出的动态手势（单指指向、双击、双指点击）不触发任何操作；"
     "实测偏弱或易混的类别刻意不绑定，被误判也不会产生动作。",
     "「旋转模型」同时接受「双指指向」与「双指双击」：模型对这两个「双指」类分不太开"
     "（慢速的双指指向常被认成双指双击），而两者访客意图相同，故合并到同一个动作。",
@@ -67,6 +79,42 @@ commons.wikimedia.org — 劉銘傳肖像</a><br/>
 <p>three.js（MIT）、GLTFLoader（MIT）、
 PySide6（LGPL v3）、PyTorch（BSD-3-Clause）、OpenCV（Apache-2.0）。</p>
 """
+
+
+def _build_table(headers, rows, row_h=36) -> QTableWidget:
+    """按内容撑到刚好高的只读表格。手势说明那一页有两张（动态 / 静态），共用这个。
+
+    ⚠ 高度必须**按行数算死**：QTableView 自身的 sizeHint 很小，
+    交给布局拉伸会留一大片空白表体，不拉伸又会被压出滚动条并截断行。
+    """
+    table = QTableWidget()
+    table.setColumnCount(len(headers))
+    table.setHorizontalHeaderLabels(list(headers))
+    table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+    table.verticalHeader().setVisible(False)
+    table.setEditTriggers(QTableWidget.NoEditTriggers)
+    table.setSelectionMode(QTableWidget.NoSelection)
+    table.setFont(QFont("Microsoft YaHei", 12))
+    table.setRowCount(len(rows))
+    table.verticalHeader().setDefaultSectionSize(row_h)
+    for i, row in enumerate(rows):
+        for j, cell in enumerate(row):
+            item = QTableWidgetItem(cell)
+            item.setTextAlignment(Qt.AlignCenter)
+            if j == 0:
+                item.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
+            table.setItem(i, j, item)
+    table.setStyleSheet("""
+        QTableWidget { background: rgba(255,255,255,0.5);
+                       border-radius: 10px; gridline-color: #ddd; }
+        QHeaderView::section { background: rgba(91,167,209,0.3);
+                               font-weight: bold; padding: 8px; border: none; }
+    """)
+    table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    table.setFixedHeight(max(table.horizontalHeader().height(), 34)
+                         + len(rows) * row_h + 2)
+    return table
 
 
 class SettingsPage(QWidget):
@@ -113,6 +161,7 @@ class SettingsPage(QWidget):
         tabs.addTab(self._tab_tuning(), "参数调节")
         tabs.addTab(self._tab_credits(), "图片来源")
         layout.addWidget(tabs, stretch=1)
+        self._tabs = tabs
 
         nav = QHBoxLayout()
         nav.setAlignment(Qt.AlignCenter)
@@ -126,6 +175,14 @@ class SettingsPage(QWidget):
         nav.addWidget(btn_home)
         layout.addLayout(nav)
 
+    def show_gestures(self):
+        """切到「手势说明」那一栏。
+
+        静态手势「点赞」进来时会先调这个 —— 否则操作员上次若停在「参数调节」，
+        访客比个赞就会看到一屏滑条，莫名其妙。
+        """
+        self._tabs.setCurrentIndex(0)
+
     # ---------------- 标签页一：手势说明 ----------------
     def _tab_gestures(self) -> QWidget:
         w = QWidget()
@@ -133,37 +190,19 @@ class SettingsPage(QWidget):
         lo.setContentsMargins(16, 16, 16, 16)
         lo.setSpacing(10)
 
-        table = QTableWidget()
-        table.setColumnCount(len(_HEADERS))
-        table.setHorizontalHeaderLabels(_HEADERS)
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionMode(QTableWidget.NoSelection)
-        table.setFont(QFont("Microsoft YaHei", 12))
-        table.setRowCount(len(_ROWS))
-        ROW_H = 36
-        table.verticalHeader().setDefaultSectionSize(ROW_H)
-        for i, row in enumerate(_ROWS):
-            for j, cell in enumerate(row):
-                item = QTableWidgetItem(cell)
-                item.setTextAlignment(Qt.AlignCenter)
-                if j == 0:
-                    item.setFont(QFont("Microsoft YaHei", 12, QFont.Bold))
-                table.setItem(i, j, item)
-        table.setStyleSheet("""
-            QTableWidget { background: rgba(255,255,255,0.5);
-                           border-radius: 10px; gridline-color: #ddd; }
-            QHeaderView::section { background: rgba(91,167,209,0.3);
-                                   font-weight: bold; padding: 8px; border: none; }
-        """)
-        # 高度按内容固定：QTableView 自身 sizeHint 很小，
-        # 交给布局拉伸会留一大片空白表体，不拉伸又会被压出滚动条并截断行。
-        table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        table.setFixedHeight(max(table.horizontalHeader().height(), 34)
-                             + len(_ROWS) * ROW_H + 2)
-        lo.addWidget(table)
+        section = QLabel("动态手势（识别「手的动作」）")
+        section.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        section.setStyleSheet("background: transparent; color: #2c5f7c;")
+        lo.addWidget(section)
+        lo.addWidget(_build_table(_HEADERS, _ROWS))
+
+        # 静态手势单独一张表：它**不跟页面走**，任何页面上都生效
+        section2 = QLabel("静态手势（识别「手此刻的形状」）· 任何页面都可用")
+        section2.setFont(QFont("Microsoft YaHei", 11, QFont.Bold))
+        section2.setStyleSheet("background: transparent; color: #2c5f7c;")
+        section2.setContentsMargins(0, 8, 0, 0)
+        lo.addWidget(section2)
+        lo.addWidget(_build_table(_STATIC_HEADERS, _STATIC_ROWS))
 
         for text in _FOOTNOTES:
             tip = QLabel("· " + text)
