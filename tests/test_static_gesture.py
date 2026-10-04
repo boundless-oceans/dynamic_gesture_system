@@ -249,22 +249,22 @@ class TestActionFor(unittest.TestCase):
     """门槛判定（纯函数）"""
 
     def setUp(self):
-        self._saved = config.STATIC_CONFIDENCE_THRESHOLD
-        config.STATIC_CONFIDENCE_THRESHOLD = 0.75
-
-    def tearDown(self):
-        config.STATIC_CONFIDENCE_THRESHOLD = self._saved
+        # ⚠ **门槛边界一律从 config 现取**，不再写死一个数。
+        #   写死的话，改了默认值这些用例照样用旧值测 —— 也就是**测不到自己的改动**。
+        #   （它不在 config.TUNABLE 里，所以 config_local.json 覆盖不到，
+        #     这里不用像别处那样"钉回出厂值"。）
+        self.th = config.STATIC_CONFIDENCE_THRESHOLD
 
     def test_未达门槛返回None(self):
-        self.assertIsNone(action_for("ok", 0.74))
+        self.assertIsNone(action_for("ok", self.th - 0.01))
 
     def test_恰好等于门槛算成立(self):
         """与动态那边一致：正好等于门槛算"成立"（`>=`）"""
-        self.assertEqual(action_for("ok", 0.75), "home")
+        self.assertEqual(action_for("ok", self.th), "home")
 
     def test_超过门槛返回动作(self):
         self.assertEqual(action_for("ok", 0.99), "home")
-        self.assertEqual(action_for("peace", 0.80), "guide")
+        self.assertEqual(action_for("peace", 0.99), "guide")
 
     def test_None也能处理(self):
         self.assertIsNone(action_for(None, 0.99))

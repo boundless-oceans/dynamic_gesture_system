@@ -69,10 +69,14 @@ DSTE-Net 动态手势识别桌面应用，文化馆非遗展示系统。PySide6 
   **两条通道的间隙各管各的**）、`config.IDLE_LADDER`（空闲降频）、
   `camera_widget._draw_zone`（交互区）。
   那几条机制都是实测调出来的，改错会**静默失效**而不是报错
-- **静态手势的门槛是拍的，没实测过**：`STATIC_CONFIDENCE_THRESHOLD = 0.75`、
+- **静态手势的门槛是现场试出来的，没正式标定**：`STATIC_CONFIDENCE_THRESHOLD = 0.8`、
   `STATIC_CONSISTENCY = 2`。现场靠摄像头悬浮窗上那行诊断读数核对
-  （`config.CAMERA_SHOW_STATIC`，验完应关掉）。⚠️ **不要顺手把静态类绑到
-  `palm` / `fist` / `point` / `peace` 上** —— 它们的手型与在用的动态手势撞车
+  （`config.CAMERA_SHOW_STATIC`，验完应关掉）。⚠️ 调门槛时记住**不能定在模型实际
+  输出分布之上**（实测 top1 稳定后常只有 50~60%），否则会"手势做对了也不触发"
+- ⚠️ **不要顺手把静态类绑到 `palm` / `fist` / `point` / `two_up` 上** ——
+  它们的手型与在用的动态手势撞车。**`peace`（比耶）是个刻意的例外**：它也撞车
+  （两指 ⚔ 旋转模型），但那个动态动作**只在 3D 页有效**，所以靠
+  `gesture_mapper.STATIC_YIELD_ON_PAGE` 在 3D 页让位解决 —— 见 `docs/MECHANISMS.md` §1.11
 
 ## 页面索引
 | 索引 | 页面 |

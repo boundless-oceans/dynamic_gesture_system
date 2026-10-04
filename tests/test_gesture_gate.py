@@ -213,7 +213,9 @@ class _Base(unittest.TestCase):
         config.CONSISTENCY_COUNT = config.DEFAULTS["CONSISTENCY_COUNT"]
         config.ACTION_COOLDOWN_MS = config.DEFAULTS["ACTION_COOLDOWN_MS"]
         config.STATIC_CONSISTENCY = 2          # 钉在**出厂值**，别跟着现场调参跑
-        config.STATIC_CONFIDENCE_THRESHOLD = 0.75
+        # ⚠ 静态门槛**刻意不钉**（已由 self._saved 备份、tearDown 还原）：
+        #   它不在 config.TUNABLE 里，config_local.json 覆盖不到，所以直接用当前值即可；
+        #   钉成另一个写死的数，只会让这些用例**测不到真实的默认值**。
         config.SEEK_STEP_MS = 30000
         import src.ui.main_window as mw
         self._mw = mw
