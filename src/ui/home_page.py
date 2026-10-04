@@ -26,11 +26,11 @@
 import os
 import time
 
-from PySide6.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 from PySide6.QtCore import (Property, QEasingCurve, QPropertyAnimation, QRectF, Qt,
                             QTimer, Signal)
-from PySide6.QtGui import (QColor, QFont, QLinearGradient, QPainter, QPainterPath,
-                           QPixmap)
+from PySide6.QtGui import (QColor, QFont, QFontMetrics, QLinearGradient, QPainter,
+                           QPainterPath, QPixmap)
 from PySide6.QtWidgets import QGraphicsDropShadowEffect
 
 from src.ui.base_page import BasePage
@@ -52,6 +52,10 @@ SHEEN_BAND_FRAC = 0.34         # 光条宽度占卡宽的比例
 SHEEN_ALPHA = 70               # 最亮处的不透明度
 SHEEN_RADIUS = 18              # 与选中态那个圆角一致（超出圆角的光会被裁掉）
 
+# 卡片右上角点赞角标（♥ N）的尺寸比例 —— 都按卡高/卡宽算，跟着响应式一起缩放
+LIKE_BADGE_H_FRAC = 0.085      # 胶囊高 = 卡高 × 这个
+LIKE_BADGE_INSET_FRAC = 0.05   # 离卡片右上角的边距 = 卡宽 × 这个
+
 
 def sheen_progress(t_ms: float):
     """光条此刻扫到卡宽的哪个位置（0~1）；**停顿期间返回 `None`（这一帧不用画）**。
@@ -68,6 +72,89 @@ def sheen_progress(t_ms: float):
     if phase >= SHEEN_SWEEP_FRAC:
         return None
     return phase / SHEEN_SWEEP_FRAC
+
+
+def like_badge_rect(w: float, h: float, text_w: float) -> tuple:
+    """点赞角标胶囊的位置与尺寸 `(x, y, w, h)`，贴在卡片右上角。
+
+    抽成纯函数是为了**能测边界** —— 点赞数涨到四五位数时，胶囊会跟着变宽，
+    搞不好就撑出卡片外面去了（那种坏法不报错，只是看着怪）。直接喂卡宽卡高和
+    文字宽度就能把各种极端组合过一遍，不用起界面。
+    """
+    bh = max(16.0, h * LIKE_BADGE_H_FRAC)
+    # 宽度跟着文字走，但**封顶在卡宽的 72%** —— 位数再多也不会糊出卡片
+    bw = min(w * 0.72, max(bh, text_w + bh * 0.66))
+    inset = max(4.0, w * LIKE_BADGE_INSET_FRAC)
+    return (w - bw - inset, inset, bw, bh)
+
+
+class _LikeBadge(QWidget):
+    """卡片右上角的点赞角标「♥ N」。
+
+    ⚠️ **必须是子控件，不能画在卡片的 `paintEvent` 里。**
+    卡片上还有缩略图和标题这两个 QLabel，而 Qt 是**画完父控件才画子控件** ——
+    画在父控件上的角标会被它们盖住（还是被半透明的图片底纹冲淡的那种盖，
+    看着就像"没画"，最难查）。所以要做成一个浮在上面的子控件。
+
+    ⚠️ 还要 `WA_TransparentForMouseEvents`：它是浮在卡片上的一层，
+    不能把"点卡片选中"这件事挡掉。
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self._n = 0
+        self._font = QFont("Microsoft YaHei")
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.hide()
+
+    def count(self) -> int:
+        return self._n
+
+    def text(self) -> str:
+        return "♥ %d" % self._n
+
+    def set_count(self, n: int):
+        n = int(n)
+        if n == self._n:
+            return
+        self._n = n
+        if n <= 0:
+            self.hide()             # 没有赞就不显示 —— 满屏的 0 只会显得吵
+            return
+        self.refit()
+        self.show()
+        self.raise_()
+
+    def refit(self):
+        """按**父卡片**的当前尺寸重算自己的位置与大小。
+
+        卡片尺寸一变（窗口拉伸、选中放大）就得重算，所以由 `_ItemCard._apply_size`
+        统一叫它一声 —— 不自己盯 resizeEvent，免得两处各算一遍对不上。
+        """
+        p = self.parentWidget()
+        if p is None or self._n <= 0:
+            return
+        w, h = p.width(), p.height()
+        if w <= 0 or h <= 0:
+            return
+        bh = max(16.0, h * LIKE_BADGE_H_FRAC)
+        self._font.setPixelSize(max(10, int(bh * 0.58)))
+        self._font.setBold(True)
+        tw = QFontMetrics(self._font).horizontalAdvance(self.text())
+        x, y, bw, bh = like_badge_rect(w, h, tw)
+        self.setGeometry(int(x), int(y), int(round(bw)), int(round(bh)))
+
+    def paintEvent(self, _e):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(self.rect())
+        radius = r.height() / 2.0                    # 两头圆到底，像个胶囊
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(198, 62, 62, 220))
+        painter.drawRoundedRect(r, radius, radius)
+        painter.setPen(QColor(255, 255, 255))
+        painter.setFont(self._font)
+        painter.drawText(r, Qt.AlignCenter, self.text())
 
 
 class _ItemCard(QFrame):
@@ -126,6 +213,7 @@ class _ItemCard(QFrame):
             lay.addStretch(1)
 
         self._refit_done = None
+        self._badge = _LikeBadge(self)      # 右上角的点赞角标（浮在卡片上的一层）
         # 尺寸 = 基准尺寸 × sel_scale。选中与否只改 sel_scale，
         # 于是"变大/缩小"可以做成一段动画（见 set_geometry_scale）。
         self._base_w, self._base_h = 160.0, 250.0
@@ -205,6 +293,7 @@ class _ItemCard(QFrame):
             self._img.setPixmap(self._src.scaled(iw, ih, Qt.KeepAspectRatio,
                                                  Qt.SmoothTransformation))
 
+        self._badge.refit()        # 卡片尺寸变了，角标得跟着重算
         self._apply_fonts(w)
 
     def _apply_fonts(self, w: int):
@@ -228,6 +317,13 @@ class _ItemCard(QFrame):
         self._selected = s
         self.setStyleSheet(_SELECTED if s else _FROSTED)
 
+    def set_like_count(self, n: int):
+        """右上角的点赞角标。**0 就不显示** —— 一开始满屏的 0 只会显得吵。"""
+        self._badge.set_count(n)
+
+    def like_count(self) -> int:
+        return self._badge.count()
+
     # ---- 鼠标 ----
     def mousePressEvent(self, e):
         self.clicked.emit(self.index)
@@ -238,8 +334,10 @@ class _ItemCard(QFrame):
     # ---- 选中卡上的光条 ----
     def paintEvent(self, event):
         super().paintEvent(event)          # 先让 QSS 把毛玻璃底画出来
-        if not self._selected:
-            return
+        if self._selected:
+            self._paint_sheen()
+
+    def _paint_sheen(self):
         p = sheen_progress(time.time() * 1000.0)
         if p is None:
             return                          # 停顿期（或关掉了这个效果）
@@ -274,6 +372,7 @@ class HomePage(BasePage):
         self._current = 0
         self._cards: list[_ItemCard] = []
         self._kinds: list[tuple] = []       # 与 _cards 对齐：(kind, 各自的下标)
+        self._like_source = None            # fn(kind, idx) -> int，见 set_like_source
 
         self._title = QLabel("庐州非遗", self)
         self._title.setAlignment(Qt.AlignCenter)
@@ -317,8 +416,28 @@ class HomePage(BasePage):
 
     def showEvent(self, e):
         super().showEvent(e)
+        # 在别的页面上点的赞，回到首页时角标要跟上
+        self.refresh_likes()
         if config.HOME_CARD_SHEEN:
             self._sheen.start()
+
+    # ---- 点赞角标 ----
+    def set_like_source(self, fn):
+        """给角标一个"取点赞数"的函数：`fn(kind, idx) -> int`。
+
+        用**拉**而不是**推**（与粒子的 `set_idle_source` 同一套路）：页面自己决定
+        什么时候去问，主窗口不必关心"现在该刷新谁"。
+        """
+        self._like_source = fn
+        self.refresh_likes()
+
+    def refresh_likes(self):
+        """按当前数据把每张卡的角标刷一遍。没有来源就什么都不做。"""
+        if self._like_source is None:
+            return
+        for card in self._cards:
+            kind, idx = self._kinds[card.index]     # card.index 是**扁平**索引
+            card.set_like_count(self._like_source(kind, idx))
 
     def hideEvent(self, e):
         super().hideEvent(e)

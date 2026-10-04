@@ -85,6 +85,8 @@ class MainWindow(QMainWindow):
         self.it.result_ready.connect(self._on_result)
         # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
         self._wire_idle_source()
+        # 首页卡片上的点赞角标（页面自己来取，见 HomePage.set_like_source）
+        self.pages["home"].set_like_source(self._like_count_for)
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
@@ -247,9 +249,17 @@ class MainWindow(QMainWindow):
             return ("proj:" + slug) if slug else ""
         return ""            # 设置页上没有可点赞的对象
 
+    def _like_count_for(self, kind, idx) -> int:
+        """首页卡片角标来问"这一张有多少赞"（拉模式，见 HomePage.set_like_source）"""
+        key = self._like_key(kind, idx)
+        return self.likes.count(key) if key else 0
+
     def _count_like(self, key) -> str:
         """给 key 记一次赞，返回提示文案。只在 key 非空时被调用。"""
-        return "点赞（共 %d 次）" % self.likes.add(key)
+        n = self.likes.add(key)
+        # 首页角标立刻跟上（它自己是拉模式的，得有人叫它一声）
+        self.pages["home"].refresh_likes()
+        return "点赞（共 %d 次）" % n
     def _static_yields_here(self,action):
         """这个静态动作在当前页面要不要**让位给动态模型**。
 
