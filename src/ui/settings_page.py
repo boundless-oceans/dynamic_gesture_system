@@ -85,6 +85,22 @@ PySide6（LGPL v3）、PyTorch（BSD-3-Clause）、OpenCV（Apache-2.0）。</p>
 """
 
 
+def _flat_button(text, slot, w=130, h=40, pt=12) -> QPushButton:
+    """设置页上那种白底圆角按钮。
+
+    这一页原本把同一段样式抄了三遍（返回首页 / 保存为默认 / 清空点赞计数），
+    字号和圆角还各差一点 —— 抽出来，改一次全都跟着变。
+    """
+    b = QPushButton(text)
+    b.setFixedSize(w, h)
+    b.setFont(QFont("Microsoft YaHei", pt))
+    b.setStyleSheet(
+        "QPushButton { background: rgba(255,255,255,0.85); border: 1px solid #aaa;"
+        " border-radius: 8px; } QPushButton:hover { background: #fff; }")
+    b.clicked.connect(slot)
+    return b
+
+
 def _build_table(headers, rows, row_h=36) -> QTableWidget:
     """按内容撑到刚好高的只读表格。手势说明那一页有两张（动态 / 静态），共用这个。
 
@@ -171,14 +187,7 @@ class SettingsPage(QWidget):
 
         nav = QHBoxLayout()
         nav.setAlignment(Qt.AlignCenter)
-        btn_home = QPushButton("返回首页")
-        btn_home.setFixedSize(140, 44)
-        btn_home.setFont(QFont("Microsoft YaHei", 13))
-        btn_home.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.8); border: 1px solid #aaa;"
-            " border-radius: 8px; } QPushButton:hover { background: rgba(255,255,255,1); }")
-        btn_home.clicked.connect(self.go_home.emit)
-        nav.addWidget(btn_home)
+        nav.addWidget(_flat_button("返回首页", self.go_home.emit, 140, 44, 13))
         layout.addLayout(nav)
 
     def show_gestures(self):
@@ -262,14 +271,7 @@ class SettingsPage(QWidget):
         row.setAlignment(Qt.AlignCenter)
         row.setSpacing(16)
         for text, slot in (("保存为默认", self._on_save), ("恢复默认", self._on_reset)):
-            b = QPushButton(text)
-            b.setFixedSize(130, 40)
-            b.setFont(QFont("Microsoft YaHei", 12))
-            b.setStyleSheet(
-                "QPushButton { background: rgba(255,255,255,0.85); border: 1px solid #aaa;"
-                " border-radius: 8px; } QPushButton:hover { background: #fff; }")
-            b.clicked.connect(slot)
-            row.addWidget(b)
+            row.addWidget(_flat_button(text, slot))
         outer.addLayout(row)
 
         self._status = QLabel("")
@@ -294,13 +296,7 @@ class SettingsPage(QWidget):
 
         like_row = QHBoxLayout()
         like_row.setAlignment(Qt.AlignCenter)
-        self._like_btn = QPushButton("清空点赞计数")
-        self._like_btn.setFixedSize(150, 40)
-        self._like_btn.setFont(QFont("Microsoft YaHei", 12))
-        self._like_btn.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.85); border: 1px solid #aaa;"
-            " border-radius: 8px; } QPushButton:hover { background: #fff; }")
-        self._like_btn.clicked.connect(self._on_reset_likes)
+        self._like_btn = _flat_button("清空点赞计数", self._on_reset_likes, 150, 40)
         like_row.addWidget(self._like_btn)
         outer.addLayout(like_row)
 

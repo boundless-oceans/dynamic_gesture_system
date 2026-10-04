@@ -492,7 +492,7 @@ IDLE_LADDER = [
 | `HOME_TOP_RESERVE_PX` | 首页卡片区要为右上角摄像头悬浮窗让开的高度 | 276 |
 | `HOME_SELECTED_SCALE` / `HOME_SELECT_ANIM_MS` | 选中卡的放大倍数 / 过渡时长（0 = 关掉）| 1.08 / 200ms |
 | `HOME_CARD_SHEEN` / `HOME_CARD_SHEEN_MS` | 选中卡上的光条 / 周期 | True / 2800ms |
-| `STATIC_CONFIDENCE_THRESHOLD` | 静态手势（OK / 比耶）的触发门槛 | **0.8** ⚠️ 仍在现场调 |
+| `STATIC_CONFIDENCE_THRESHOLD` | 静态手势（OK / 比耶）的触发门槛（**现场可调**）| **0.8** |
 | `STATIC_CONSISTENCY` | 静态手势需连续几帧才触发（1 = 一帧即触发）| **2** ⚠️ 未实测 |
 | `STATIC_INPUT` | 静态模型吃哪块画面：`zone` 中央交互区 / `full` 整帧 | `zone` |
 | `CAMERA_SHOW_STATIC` | 悬浮窗上是否显示静态模型的读数（**诊断用**）| True |
@@ -513,7 +513,11 @@ IDLE_LADDER = [
 
 | 可在界面调整 | 只能改代码 |
 |---|---|
-| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`DISPLAY_HOLD_MS` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS`、`IDLE_LADDER`、<br>以及全部动效参数（`PAGE_FADE_MS` / `HOME_*` / `INK_*`）|
+| `CONFIDENCE_THRESHOLD`、`DISPLAY_CONFIDENCE`、`CONSISTENCY_COUNT`、<br>`ACTION_COOLDOWN_MS`、`DISPLAY_HOLD_MS`、`STATIC_CONFIDENCE_THRESHOLD` | `SMOOTH_FRAMES`（决定平滑缓冲容量，构造时固定）、<br>`NUM_SEGMENTS`、`SAMPLE_WINDOW_FRAMES`、`SEEK_STEP_MS`、`IDLE_LADDER`、<br>以及全部动效参数（`PAGE_FADE_MS` / `HOME_*` / `INK_*`）|
+
+> ⚠️ 「显示置信度门槛」的滑条**上限刻意到不了**「显示切换门槛」（0.8）——
+> 两者顶到同值就等于把切换门槛那道保护取消了，悬浮窗标签会一直换来换去。
+> 默认值本来就满足这个关系，但**操作员在展台上拖一下就能破坏它**，所以从区间上堵死。
 
 > **门槛和去抖次数仍然留在滑条上**（哪怕默认值是 1）—— 现场真发现误触发，
 > 操作员当场往上推即可，**不用重新打包**。这是敢把门槛放到 0.6 的底气。
