@@ -15,6 +15,10 @@ venv/
 # 现场调参（设置页"保存为默认"生成，每台展台各自一份，不进版本库）
 config_local.json
 
+# 点赞计数存档（运行时数据，每台展台各自一份，不进版本库）
+likes.json
+.likes-*.tmp
+
 
 # 3D 模型产物（由 tools/fbx_to_glb.py 从原始素材生成，体积大，不进版本库）
 assets/models/

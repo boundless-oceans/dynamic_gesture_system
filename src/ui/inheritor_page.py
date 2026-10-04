@@ -64,7 +64,11 @@ class InheritorPage(BasePage):
         self._media = QStackedWidget()
         self._pic = QLabel()
         self._pic.setAlignment(Qt.AlignCenter)
-        self._pic.setMinimumHeight(320)
+        # ⚠ 这个最小值是**窗口能缩多小的下限之一**，不是"照片该有多大" ——
+        # 正常情况下布局会把照片撑满，这里只定住"窗口被拖得很矮时"的底线。
+        # 原先写的 320 会把主窗口的最小高度顶到 660（宽度那边才 538），
+        # 表现就是"宽度能拉、高度拉不动"。（2026-10 用户报的，见 settings_page._scroll）
+        self._pic.setMinimumHeight(120)
         self._pic.setStyleSheet("background:rgba(0,0,0,0.06);border-radius:8px;")
         self._media.addWidget(self._pic)              # 0: 照片
         self._video_holder = QWidget()

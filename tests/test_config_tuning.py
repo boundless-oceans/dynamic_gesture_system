@@ -53,6 +53,19 @@ class TestThresholdRelations(unittest.TestCase):
                            config.DISPLAY_CONFIDENCE,
                            "切换门槛不高于显示门槛 → 标签会被频繁抢走")
 
+    def test_显示门槛的滑条上限不能顶到切换门槛(self):
+        """⚠ 「显示门槛」在设置页上是**能拖的**。拖到与「显示切换门槛」同值，
+        就等于把后者那道保护取消掉：任何"够显示"的结果都能立刻抢走当前显示，
+        悬浮窗标签会一直换来换去（2026-09 之前两者都是 0.6，就是这个毛病）。
+
+        ⚠️ 关键在这条路径**操作员在展台上就能走，不用改代码** ——
+        所以必须从滑条区间上堵死。光靠上面那条"当前值满足关系"的断言拦不住：
+        默认值是对的，一拖就坏了。
+        """
+        spec = {s["key"]: s for s in config.TUNABLE}["DISPLAY_CONFIDENCE"]
+        self.assertLess(spec["max"], config.DISPLAY_SWITCH_CONFIDENCE,
+                        "显示门槛能拖到切换门槛上 → 标签乱闪的老毛病会回来")
+
     def test_间隙与触发用同一个门槛(self):
         """⚠ 这两者必须看**同一个量、同一个门槛** —— 做结构性守卫。
 

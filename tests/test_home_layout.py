@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QApplication
 
 from src import config
 from src.core.project_data import INHERITORS, PROJECTS
+from src.ui import home_page as hp
 from src.ui.home_page import HomePage
 from src.ui.main_window import IDX, MainWindow
 
@@ -148,14 +149,95 @@ class TestNavigation(_HomeBase):
         self.page._up()
         self.assertEqual(self.page.current_index(), 2, "已经在第一排，向上不该动")
 
-    def test_下面没有对位就不动(self):
-        """两排不一样长时（现在 6 个 5 位），最长那排多出来的卡下面没有东西"""
-        if len(PROJECTS) <= len(INHERITORS):
-            self.skipTest("需要第一排比第二排长才有意义")
-        self.page._move(len(PROJECTS) - 1)
-        before = self.page.current_index()
-        self.page._down()
-        self.assertEqual(self.page.current_index(), before, "下面没有对位就不该动")
+    # 注：「下面没有对位就不动」原先是这一类里的一条用例，靠真实数据恰好不等长
+    # 才跑。两排都补到 8 位后它自己静音了，已**删掉** —— 那种情形现在由
+    # 下面的 TestUnevenRows 自己造数据来测（两个方向都测），不再看数据脸色。
+
+
+class TestUnevenRows(unittest.TestCase):
+    """两排**不一样长**时的跨排边界。
+
+    ⚠ 这一类原来靠真实数据恰好不等长才跑。2026-10 两排都补到 8 位之后，
+    它**自己静音了**：断言还在、却再也不执行 —— 正是这个项目最怕的那种坏法。
+    现在改成把两个列表打成不等长，**由测试自己造出前提**，不再看数据脸色。
+
+    两个方向都要测，而且它们**不对称**：
+      第一排更长 → 多出来的项目卡，`_down` 要有边界检查
+      第二排更长 → 多出来的传承人卡，`_up` 要有边界检查   ← 这里原先少一个检查
+    """
+
+    NP, NI = 5, 3       # 第一排更长
+    NP2, NI2 = 3, 5     # 第二排更长 —— `_up` 的毛病只在这个方向露出
+
+    def setUp(self):
+        _need(len(PROJECTS) + len(INHERITORS), "卡片数据")
+        self._saved_anim = config.HOME_SELECT_ANIM_MS
+        config.HOME_SELECT_ANIM_MS = 0
+        self._saved_data = (hp.PROJECTS, hp.INHERITORS)
+
+    def tearDown(self):
+        hp.PROJECTS, hp.INHERITORS = self._saved_data
+        config.HOME_SELECT_ANIM_MS = self._saved_anim
+        self.page.close()
+
+    def _make(self, n_p, n_i):
+        """按指定的排长造一个首页。
+
+        ⚠ 两个列表要**一直**打着补丁（不只构造那一刻）：`_row1` 是属性，
+        每次导航都现读模块全局。构造完就还原的话，卡片是 5 张、跨排却按 8 算。
+        """
+        hp.PROJECTS = [{"name": "项目%d" % i} for i in range(n_p)]
+        hp.INHERITORS = [{"name": "传承人%d" % j, "project": "测试项目"}
+                         for j in range(n_i)]
+        self.page = hp.HomePage()
+        self.page.resize(1280, 800)
+        self.page.show()
+        _app.processEvents()
+        return self.page
+
+    def test_第一排更长_多出来的项目卡向下不动(self):
+        p = self._make(self.NP, self.NI)
+        p._move(self.NP - 1)                       # 最后一张项目卡，下面没东西
+        p._down()
+        self.assertEqual(p.current_index(), self.NP - 1, "下面没有对位就不该动")
+
+    def test_第一排更长_有对位的仍能下去再上来(self):
+        """别为了修边界把正常跨排也堵死"""
+        p = self._make(self.NP, self.NI)
+        p._move(self.NI - 1)                       # 第 NI 张（最后一位传承人的上方）
+        p._down()
+        self.assertEqual(p.current_index(), self.NI - 1 + self.NP, "应当换到第二排同列")
+        p._up()
+        self.assertEqual(p.current_index(), self.NI - 1, "上去应回到第一排同列")
+
+    def test_第二排更长_多出来的传承人卡向上不动(self):
+        """⚠ 这条正是那个潜伏 bug 的判据。
+
+        第二排更长时，尾部的 `_current - _row1` 仍落在**第二排**里；
+        只判 `_current >= _row1` 的话，一"向上"就跳到同排另一张卡上去了。
+        """
+        p = self._make(self.NP2, self.NI2)
+        flat = self.NP2 + self.NI2 - 1             # 最后一张传承人卡，上面没东西
+        p._move(flat)
+        self.assertEqual(p.current_index(), flat, "前提：先站到最后一张")
+        p._up()
+        self.assertEqual(p.current_index(), flat, "上面没有对位就不该动")
+
+    def test_第二排更长_有对位的仍能上去(self):
+        p = self._make(self.NP2, self.NI2)
+        p._move(self.NP2)                          # 第二排第一张，正上方是项目 0
+        p._up()
+        self.assertEqual(p.current_index(), 0, "应当换回第一排同列")
+
+    def test_两排不一样长也不崩(self):
+        """排长差很多时，上下左右各来一遍：不抛异常、索引始终合法"""
+        for n_p, n_i in ((1, 7), (7, 1), (1, 1)):
+            with self.subTest(项目=n_p, 传承人=n_i):
+                p = self._make(n_p, n_i)
+                for fn in (p._next, p._prev, p._up, p._down):
+                    for _ in range(n_p + n_i + 2):
+                        fn()
+                        self.assertTrue(0 <= p.current_index() < p.card_count())
 
 
 class TestActivate(_HomeBase):
@@ -277,6 +359,157 @@ class TestAvoidsCameraOverlay(_HomeBase):
             overlap = (c.x() < cam[0] + cam[2] and c.x() + c.width() > cam[0]
                        and c.y() < cam[1] + cam[3] and c.y() + c.height() > cam[1])
             self.assertFalse(overlap, "第 %d 张卡和摄像头悬浮窗重叠了" % i)
+
+
+class TestLikeBadge(_HomeBase):
+    """卡片右上角的点赞角标（♥ N）
+
+    守的是**坏了不会报错**的两处：
+
+      * **角标挂错了卡** —— 第二排第 1 位传承人的赞显示在"项目 0"上。
+        和 `current_target()` 是同一类坑：卡片的 `index` 是**扁平**索引，
+        而点赞数是按**各自那排的下标**记的
+      * **数字记下了却没画出来** —— `set_like_count` 存进字段了，
+        但 `paintEvent` 里没画。光看字段是绿的，屏幕上是空的
+    """
+
+    @staticmethod
+    def _source(table):
+        return lambda kind, idx: table.get((kind, idx), 0)
+
+    def test_角标挂在对的那张卡上(self):
+        from src.core.project_data import INHERITORS, PROJECTS
+        _need(len(PROJECTS) + len(INHERITORS), "卡片数据")
+        table = {("project", 0): 7, ("project", 2): 3,
+                 ("inheritor", 0): 5, ("inheritor", 1): 9}
+        self.page.set_like_source(self._source(table))
+        n_p = len(PROJECTS)
+        self.assertEqual(self.page._cards[0].like_count(), 7)
+        self.assertEqual(self.page._cards[2].like_count(), 3)
+        self.assertEqual(self.page._cards[n_p + 0].like_count(), 5,
+                         "第二排第 1 位的赞挂到项目头上去了")
+        self.assertEqual(self.page._cards[n_p + 1].like_count(), 9)
+        self.assertEqual(self.page._cards[1].like_count(), 0, "没赞的卡不该有角标")
+
+    def test_回到首页会刷新角标(self):
+        from src.core.project_data import PROJECTS
+        _need(len(PROJECTS), "卡片数据")
+        table = {("project", 0): 4}
+        self.page.set_like_source(self._source(table))
+        self.assertEqual(self.page._cards[0].like_count(), 4)
+        table[("project", 0)] = 11          # 模拟：在别的页面上又攒了几个赞
+        self.page.hide()
+        self.page.show()
+        _app.processEvents()
+        self.assertEqual(self.page._cards[0].like_count(), 11, "回首页没刷新角标")
+
+    def test_没接来源时不崩也不画(self):
+        self.assertIsNone(self.page._like_source)
+        self.page.refresh_likes()
+        for c in self.page._cards:
+            self.assertEqual(c.like_count(), 0)
+
+    def test_没有赞就不显示(self):
+        """⚠ 要测**从有到无**这一条路径。
+
+        光给一堆 0 是测不到的 —— 卡片初始就是 0，`set_count(0)` 会撞上
+        "值没变就早退"，`hide()` 那行根本不执行（变异验证抓出来过）。
+        "赞清零了角标还留着"这种坏法只有先有后无才碰得到。
+        """
+        for c in self.page._cards:
+            self.assertEqual(c.like_count(), 0)
+            self.assertFalse(c._badge.isVisible(), "初始就不该有角标")
+
+        card = self.page._cards[0]
+        card.set_like_count(5)
+        _app.processEvents()
+        self.assertTrue(card._badge.isVisible(), "有赞了却不显示角标")
+        card.set_like_count(0)
+        _app.processEvents()
+        self.assertFalse(card._badge.isVisible(), "赞清零了，角标还留着")
+
+    def test_角标必须挂成卡片的子控件(self):
+        """⚠ 这条守的是一个**真实踩过的坑**。
+
+        角标一开始是画在卡片的 `paintEvent` 里的。而卡片上还有缩略图和标题两个
+        QLabel，Qt 是**画完父控件才画子控件** —— 于是角标被它们盖掉了大半
+        （还是被半透明图片底纹冲淡的那种盖）。字段全对，屏幕上只剩一小条。
+
+        改成子控件之后：`grab()` 出来的可见像素从 136 涨到 826。
+        """
+        for c in self.page._cards:
+            self.assertIs(c._badge.parent(), c, "角标不是卡片的子控件")
+
+    def test_角标不挡鼠标(self):
+        """⚠ 它是浮在卡片上的一层。没设 WA_TransparentForMouseEvents 的话，
+        正好点在那儿的人会"点不动"卡片，而且没有任何提示。"""
+        from PySide6.QtCore import Qt
+        for c in self.page._cards:
+            self.assertTrue(c._badge.testAttribute(Qt.WA_TransparentForMouseEvents),
+                            "角标会把点击卡片挡掉")
+
+    def test_角标真的画出来了而且只画在角标那块(self):
+        """⚠ 比像素 —— 字段对了不代表屏幕上真有东西（见上面那条踩过的坑）。"""
+        _need(self.page.card_count(), "卡片")
+        card = self.page._cards[1] if self.page.card_count() > 1 else self.page._cards[0]
+        self.assertFalse(card._selected, "前提：拿没选中的卡比 —— 选中态有光条，会干扰")
+
+        card.set_like_count(0)
+        blank = card.grab().toImage()
+        card.set_like_count(8)
+        drawn = card.grab().toImage()
+
+        xs, ys = [], []
+        for y in range(blank.height()):
+            for x in range(blank.width()):
+                if blank.pixelColor(x, y) != drawn.pixelColor(x, y):
+                    xs.append(x); ys.append(y)
+        self.assertTrue(xs, "数字记下了但屏幕上什么都没画出来")
+
+        b = card._badge
+        # 变的那块必须**落在角标自己的几何范围里** —— 画错地方就会漏出来
+        self.assertGreaterEqual(min(xs), b.x() - 1)
+        self.assertLessEqual(max(xs), b.x() + b.width())
+        self.assertGreaterEqual(min(ys), b.y() - 1)
+        self.assertLessEqual(max(ys), b.y() + b.height())
+
+        # 而且那块确实在**右上角**：横向在右半张、纵向在上半张
+        self.assertGreater(b.x(), card.width() * 0.5, "角标跑到左半张去了")
+        self.assertLess(b.y() + b.height() * 0.5, card.height() * 0.5, "角标跑到下半张去了")
+
+    def test_窗口变了角标跟着走(self):
+        """⚠ 角标的位置是由**卡片尺寸**算出来的，卡片尺寸又跟窗口走。
+
+        漏掉那一次 `refit()` 的话，角标会**停在旧位置**——不动、不报错，
+        只是窗口一大它就缩在角落里，看着像贴纸没贴正。
+        """
+        card = self.page._cards[1] if self.page.card_count() > 1 else self.page._cards[0]
+        card.set_like_count(5)
+        self.resize(1280, 800)
+        _app.processEvents()
+        small = card._badge.width()
+        self.resize(1920, 1080)
+        _app.processEvents()
+        self.assertGreater(card._badge.width(), small, "窗口变大，角标却没跟着变大")
+        self.assertGreater(card._badge.x(), card.width() * 0.5, "角标没跟着卡片走")
+
+    def test_角标不会跑出卡片外(self):
+        """⚠ 点赞数涨到四五位数时胶囊会变宽 —— 撑出卡片外面不报错，只是看着怪。"""
+        import src.ui.home_page as hp
+        for w, h in ((80, 120), (144, 226), (232, 363), (600, 900), (3840, 2160)):
+            for tw in (8.0, 40.0, 120.0):
+                with self.subTest(卡=(w, h), 文字宽=tw):
+                    x, y, bw, bh = hp.like_badge_rect(w, h, tw)
+                    self.assertGreaterEqual(x, 0, "角标跑到卡片左边外面了")
+                    self.assertLessEqual(x + bw, w + 1e-6, "角标右边缘跑出卡片了")
+                    self.assertGreater(bh, 0)
+                    self.assertLessEqual(y + bh, h, "角标下边缘跑出卡片了")
+
+    def test_卡太小也不崩(self):
+        import src.ui.home_page as hp
+        x, y, bw, bh = hp.like_badge_rect(1, 1, 999)
+        self.assertGreater(bh, 0)
+        self.assertGreater(bw, 0)
 
 
 class _Recorder:

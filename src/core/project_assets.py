@@ -13,7 +13,8 @@ IMAGES_DIR = os.path.join(ROOT, "assets", "images")
 MODELS_DIR = os.path.join(ROOT, "assets", "models")
 VIDEOS_DIR = os.path.join(ROOT, "assets", "videos")
 
-SLUGS = ["hulu", "liumingchuan", "baogong", "luju", "huobihua", "wushantiezi"]
+SLUGS = ["hulu", "liumingchuan", "baogong", "luju", "huobihua", "wushantiezi",
+         "guqin", "caihuitiejin"]
 
 
 def slug_of(index: int) -> str:

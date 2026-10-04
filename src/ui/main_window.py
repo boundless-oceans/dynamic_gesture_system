@@ -5,7 +5,10 @@ from PySide6.QtCore import Qt,Signal
 from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
-from src.core.gesture_mapper import index_to_control, CONTROL_CN
+from src.core.static_gesture import StaticGestureRecognizer, action_for as static_action
+from src.core.gesture_mapper import index_to_control, CONTROL_CN, STATIC_YIELD_ON_PAGE
+from src.core.like_store import LikeStore
+from src.core.project_data import INHERITORS
 from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
@@ -27,6 +30,11 @@ class MainWindow(QMainWindow):
         self.resize(1280,800)
         self.frame_buffer=FrameBuffer()
         self.recognizer=GestureRecognizer()
+        # 静态手势模型（认"手此刻的形状"）。权重缺失时 status != "ok"，
+        # 整条路自动静默跳过 —— 动态手势不受任何影响
+        self.static=StaticGestureRecognizer()
+        # 点赞计数（按非遗项目 / 传承人分记，见 src/core/like_store.py）
+        self.likes=LikeStore()
         self.stack=QStackedWidget()
         self.pages={
             "inheritor":InheritorPage(),"home":HomePage(),"detail":DetailPage(),
@@ -44,6 +52,9 @@ class MainWindow(QMainWindow):
         #    判定在 _on_result 里，用的是触发用的同一个量（平滑置信度）。
         self._need_gap=False
         self._hold_since=0.0       # 上次触发时刻(ms)，只给 MAX_HOLD_MS 防死锁用
+        # 静态手势是**另一条通道**，间隙和去抖都各管各的（理由见 _on_static / _ocg）
+        self._static_need_gap=False
+        self._static_lg=None; self._static_count=0
         self._toast_text=""        # 最近一次"已执行"的文案（显示由 self.toast 负责）
         self._disp_label=None; self._disp_conf=0.0; self._disp_ts=0.0  # 显示保持状态
         # 换页：重置去抖（冷却要保留，理由见 _on_page_changed）
@@ -70,10 +81,16 @@ class MainWindow(QMainWindow):
         # 操作提示（屏幕下方居中）。建在摄像头之后，免得被它盖住
         self.toast=ToastOverlay(self)
         # 推理
-        self.it=InferenceThread(self.frame_buffer,self.recognizer)
+        self.it=InferenceThread(self.frame_buffer,self.recognizer,self.static)
         self.it.result_ready.connect(self._on_result)
         # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
         self._wire_idle_source()
+        # 首页卡片上的点赞角标（页面自己来取，见 HomePage.set_like_source）
+        self.pages["home"].set_like_source(self._like_count_for)
+        # 设置页里的"清空点赞计数"。清完得让首页角标跟上，
+        # 所以走信号而不是让设置页自己去戳首页 —— 谁该刷新由主窗口说了算
+        self.pages["settings"].set_like_store(self.likes)
+        self.pages["settings"].likes_reset.connect(self.pages["home"].refresh_likes)
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
@@ -167,6 +184,15 @@ class MainWindow(QMainWindow):
         else:
             self._disp_label=None
             self.cw.set_confidence(None, dc)
+        # ---- 静态手势（架构 A：只做加法）----
+        # ⚠ 放在动态那一段**之前**，而且**不 return** —— 这一路只对 ok / 比耶说话，
+        #   判成别的类就是弃权，动态照常走。
+        st=r.get("static")
+        if st is None:
+            self.cw.set_static(None,0.0)
+        else:
+            self.cw.set_static(st.get("label"),st.get("confidence",0.0))
+        self._on_static(st)
         # 触发用平滑结果 —— 保持稳定，避免误触发
         gid=int(r["gesture"]); cf=r.get("confidence",0)
         if cf < config.CONFIDENCE_THRESHOLD:
@@ -184,48 +210,183 @@ class MainWindow(QMainWindow):
             return
         c=index_to_control(gid)
         if c: self._ocg(c)
-    def _ocg(self,g):
+    def _page_name(self):
+        """当前页面名（IDX 的反查）。"""
+        return {v: k for k, v in IDX.items()}.get(self.stack.currentIndex())
+    # ---- 点赞：给"当前这个非遗项目 / 传承人"记一次 ----
+    #
+    # 键的形态是 `proj:<slug>` / `inh:<姓名>`。带前缀有两个用处：
+    # 一眼能看出这一条是项目还是人；也免得将来某个人名正好撞上某个 slug。
+    #
+    # ⚠ **键必须稳定**，否则点赞数会**悄悄串到别人身上**（不报错，最难发现）：
+    #   * 项目用 **slug**（`baogong` 这种），**不是序号** ——
+    #     序号会随项目增减 / 调序全体错位
+    #   * 传承人用 **姓名** —— 全代码里认传承人本来就是用 name
+    #     （见 project_assets.inheritor_video / inheritor_photo），没有别的标识
+    @staticmethod
+    def _like_key(kind, idx) -> str:
+        if kind == "project":
+            slug = project_assets.slug_of(idx)
+            return ("proj:" + slug) if slug else ""
+        if kind == "inheritor" and 0 <= idx < len(INHERITORS):
+            name = INHERITORS[idx].get("name") or ""
+            return ("inh:" + name) if name else ""
+        return ""
+
+    def _current_like_key(self) -> str:
+        """此刻"可点赞的对象"的键；**当前页面上没有这样的对象时返回空串**。
+
+        首页两排都是卡片，所以两排都能点赞（用户 2026-10-04 定的 B 方案）——
+        第一排是非遗项目、第二排是传承人，各自记各自的。
+        """
+        cn = self._page_name()
+        if cn == "home":
+            kind, idx = self.pages["home"].current_target()
+            return self._like_key(kind, idx)
+        if cn == "inheritor":
+            return self._like_key("inheritor", self.pages["inheritor"]._index)
+        if cn == "detail":
+            return self._like_key("project", self.pages["detail"]._pi)
+        if cn == "viewer":
+            # 3D 页记着自己加载的是哪个模型（load_model 时存下的）
+            slug = self.pages["viewer"]._slug
+            return ("proj:" + slug) if slug else ""
+        return ""            # 设置页上没有可点赞的对象
+
+    def _like_count_for(self, kind, idx) -> int:
+        """首页卡片角标来问"这一张有多少赞"（拉模式，见 HomePage.set_like_source）"""
+        key = self._like_key(kind, idx)
+        return self.likes.count(key) if key else 0
+
+    def _count_like(self, key) -> str:
+        """给 key 记一次赞，返回提示文案。只在 key 非空时被调用。"""
+        n = self.likes.add(key)
+        # 首页角标立刻跟上（它自己是拉模式的，得有人叫它一声）
+        self.pages["home"].refresh_likes()
+        return "点赞（共 %d 次）" % n
+    def _static_yields_here(self,action):
+        """这个静态动作在当前页面要不要**让位给动态模型**。
+
+        只有一个原因：**手型撞车**。两个模型吃同一块画面，同一个手型会同时喂进
+        两边。"比耶"（✌️）撞的是动态的「双指指向 / 双指双击 → 旋转模型」，
+        而那个动作**只在 3D 页上有效** —— 所以 3D 页把 ✌️ 归动态模型
+        （设置页那张表里，3D 页的"旋转模型"本来就写着用两指）。
+
+        别的页面上动态那个手势本来就是空转，所以只在 3D 页让位。
+        让位时按"条件不成立"处理（顺带把间隙记上），换到别的页面还能正常用。
+        """
+        return STATIC_YIELD_ON_PAGE.get(action)==self._page_name()
+    def _on_static(self,st):
+        """静态手势通道（架构 A：**只做加法**）。
+
+        只对**绑定的那两个类**（ok / 比耶）说话；判成别的类一律**弃权** ——
+        动态模型照旧、不受任何影响。所以这个模型判错绝大多数类时产生不了后果。
+        """
+        if st is None:
+            # 没有静态结果（权重缺失 / 这一路出错）→ 当作"条件不成立"处理，
+            # 免得它一旦恢复反而被旧状态挡住
+            self._static_need_gap=False; self._static_lg=None; self._static_count=0
+            return
+        action=static_action(st.get("label"),st.get("confidence",0.0))
+        if action is not None and self._static_yields_here(action):
+            action=None            # 这一页上这个手型归动态模型 → 静态弃权
+        if action is None:
+            # 触发条件**不成立**了（不是绑定的类，或没够门槛）——
+            # 这就是**静态通道自己的间隙**：姿势一松开就记上，下次才允许再触发。
+            # ⚠ 这一条是"举着 OK 不动不会一直回首页"的唯一保证。
+            self._static_need_gap=False
+            self._static_lg=None; self._static_count=0
+            return
+        # 连续 STATIC_CONSISTENCY 帧都判成同一个绑定动作才触发。
+        # 静态姿势是**被保持**的，多等一帧几乎不花钱，而单帧的误判会被挡掉。
+        if action==self._static_lg: self._static_count+=1
+        else: self._static_lg=action; self._static_count=1
+        if self._static_count<config.STATIC_CONSISTENCY: return
+        self._ocg(action,source="static")
+    def _ocg(self,g,source="dynamic"):
+        # 点赞得有个"可点赞的对象"才做得成（设置页上就没有）。
+        # ⚠ 没有就**在这里直接返回，连冷却都不消耗** —— 否则访客在设置页比个大拇指
+        #   会白白静默 1.5 秒，而且提示胶囊还会谎报"已执行：点赞"。
+        #   这和"到了边界不响应"那种是两回事：那种确实执行了一次无效动作，
+        #   这种是**根本没有作用对象**。
+        like_key = self._current_like_key() if g=="like" else ""
+        if g=="like" and not like_key: return
         now=time.time()*1000.0
         # ============ 防重复触发：两道，都很短，且都不依赖机器快慢 ============
         # ① 间隙：上次触发之后，触发条件还没"断"过 → 不响应。
-        #    同一个手势一直被识别时靠这条挡住（判定在 _on_result）
-        if self._need_gap:
+        #
+        # ⚠ **两条通道各管各的间隙**，判据不同、绝不能合用：
+        #     动态看"平滑置信度有没有掉下 CONFIDENCE_THRESHOLD"（判定在 _on_result）
+        #     静态看"那个姿势有没有松开"（判定在 _on_static）
+        #   合用会互相锁死 —— 举个真实的：比完 OK 手还没放下，动态模型很可能
+        #   持续报 B0A 单指指向（OK 的手型里就有那根伸出的食指），于是动态那条
+        #   间隙永远等不来，访客想接着翻页最长被憋 MAX_HOLD_MS 3 秒。
+        if source=="static":
+            if self._static_need_gap:
+                return
+        elif self._need_gap:
             # 防死锁：万一模型对静止画面一直报同一个手势、门槛之上不下来，
             # 就永远等不到间隙。超过 MAX_HOLD_MS 强制放行 —— 宁可偶尔多触发一次，
             # 也不能让整个展台对任何手势都没反应（那种坏法不报错、看着一切正常）。
+            #
+            # ⚠ 静态通道**没有**这一层，也不需要：举着一个姿势不动本来就该只触发
+            #   一次（间隙要求的是"松手"，那个条件访客完全控制得了）。
             if (now - self._hold_since) >= config.MAX_HOLD_MS:
                 self._need_gap = False
                 self._cooldown_until = now + config.ACTION_COOLDOWN_MS
             else:
                 return
-        # ② 冷却：从**触发**时刻起算
+        # ② 冷却：从**触发**时刻起算。**两条通道共用** —— 一次只执行一个动作，
+        #    "刚比完 OK 就抛一下"不该两个都生效。
         if now < self._cooldown_until:
             return
         # 去抖：连续 N 次相同动作才触发。默认 N=1 → 一次即触发。
         # ⚠ 这里**不能**像原来那样在"手势变了"那一支直接 return ——
         # 那样第一次永远轮不到触发，N=1 就变成了空转。
-        if g==self._lg: self._gc+=1
-        else: self._lg=g; self._gc=1
-        if self._gc<config.CONSISTENCY_COUNT: return
-        self._gc=0
+        #
+        # ⚠ **静态通道不走这里**：它有自己的"连续 STATIC_CONSISTENCY 帧"计数
+        #   （见 _on_static），而 _lg/_gc 是动态通道的状态，混进来会互相清零。
+        if source=="dynamic":
+            if g==self._lg: self._gc+=1
+            else: self._lg=g; self._gc=1
+            if self._gc<config.CONSISTENCY_COUNT: return
+            self._gc=0
         # 执行了动作 → 冷却**从这一刻起算**，并要求一个"间隙"才允许下次触发
         self._cooldown_until = now + config.ACTION_COOLDOWN_MS
-        self._need_gap = True
-        self._hold_since = now
+        if source=="static":
+            self._static_need_gap = True
+        else:
+            self._need_gap = True
+            self._hold_since = now
         # 到这里闸门都过了，动作**真的会执行** → 告诉推理线程"有人在用"，
         # 让它回到全速档。这就是空闲降频的判据（见 docs/MECHANISMS.md §2.2）。
         # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
         # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
         self.it.mark_active()
-        cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
+        cn=self._page_name()
         # "已执行"提示：屏幕下方居中弹一下（src/ui/toast.py）。
         # 视频页的左/右实际是快退/快进，文案跟着改。
         label = CONTROL_CN.get(g, g)
+        # 点赞就地做掉：文案里要带上"第几次"，所以执行与文案在这里一起算
+        # （like_key 在上面算过，非空才走得到这里）
+        if g=="like":
+            label = self._count_like(like_key)
         if g in ("swipe_left","swipe_right") and (
                 cn=="inheritor" or (cn=="detail" and self.pages["detail"].is_video_view())):
             label = "快退" if g=="swipe_left" else "快进"
         self._toast_text = "✔ 已执行：" + label
         self.toast.show_toast(self._toast_text)
+        # ---- 全局动作：**不跟当前页面走**，任何页面上都生效 ----
+        # 这两个只有静态手势（ok / 比耶）会产出，所以放在页面分发之前。
+        if g=="home":
+            self.stack.setCurrentIndex(IDX["home"])
+            return
+        if g=="guide":
+            # 先切标签页再换页：设置页停在「参数调节」时，访客比个耶会看到一屏滑条，
+            # 莫名其妙。先切好，页面出现时就已经是「手势说明」了（也不会看到跳一下）。
+            self.pages["settings"].show_gestures()
+            self.stack.setCurrentIndex(IDX["settings"])
+            return
         if cn=="home":
             hp=self.pages["home"]
             # 单击 = 激活选中项：项目卡进详情页、传承人卡进传承人页那一位
