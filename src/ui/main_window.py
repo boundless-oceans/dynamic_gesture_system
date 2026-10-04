@@ -7,6 +7,8 @@ from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
 from src.core.static_gesture import StaticGestureRecognizer, action_for as static_action
 from src.core.gesture_mapper import index_to_control, CONTROL_CN, STATIC_YIELD_ON_PAGE
+from src.core.like_store import LikeStore
+from src.core.project_data import INHERITORS
 from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
@@ -31,6 +33,8 @@ class MainWindow(QMainWindow):
         # 静态手势模型（认"手此刻的形状"）。权重缺失时 status != "ok"，
         # 整条路自动静默跳过 —— 动态手势不受任何影响
         self.static=StaticGestureRecognizer()
+        # 点赞计数（按非遗项目 / 传承人分记，见 src/core/like_store.py）
+        self.likes=LikeStore()
         self.stack=QStackedWidget()
         self.pages={
             "inheritor":InheritorPage(),"home":HomePage(),"detail":DetailPage(),
@@ -81,6 +85,12 @@ class MainWindow(QMainWindow):
         self.it.result_ready.connect(self._on_result)
         # 粒子背景跟着"空闲多久"降频（必须等 it 建好之后）
         self._wire_idle_source()
+        # 首页卡片上的点赞角标（页面自己来取，见 HomePage.set_like_source）
+        self.pages["home"].set_like_source(self._like_count_for)
+        # 设置页里的"清空点赞计数"。清完得让首页角标跟上，
+        # 所以走信号而不是让设置页自己去戳首页 —— 谁该刷新由主窗口说了算
+        self.pages["settings"].set_like_store(self.likes)
+        self.pages["settings"].likes_reset.connect(self.pages["home"].refresh_likes)
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
@@ -203,6 +213,57 @@ class MainWindow(QMainWindow):
     def _page_name(self):
         """当前页面名（IDX 的反查）。"""
         return {v: k for k, v in IDX.items()}.get(self.stack.currentIndex())
+    # ---- 点赞：给"当前这个非遗项目 / 传承人"记一次 ----
+    #
+    # 键的形态是 `proj:<slug>` / `inh:<姓名>`。带前缀有两个用处：
+    # 一眼能看出这一条是项目还是人；也免得将来某个人名正好撞上某个 slug。
+    #
+    # ⚠ **键必须稳定**，否则点赞数会**悄悄串到别人身上**（不报错，最难发现）：
+    #   * 项目用 **slug**（`baogong` 这种），**不是序号** ——
+    #     序号会随项目增减 / 调序全体错位
+    #   * 传承人用 **姓名** —— 全代码里认传承人本来就是用 name
+    #     （见 project_assets.inheritor_video / inheritor_photo），没有别的标识
+    @staticmethod
+    def _like_key(kind, idx) -> str:
+        if kind == "project":
+            slug = project_assets.slug_of(idx)
+            return ("proj:" + slug) if slug else ""
+        if kind == "inheritor" and 0 <= idx < len(INHERITORS):
+            name = INHERITORS[idx].get("name") or ""
+            return ("inh:" + name) if name else ""
+        return ""
+
+    def _current_like_key(self) -> str:
+        """此刻"可点赞的对象"的键；**当前页面上没有这样的对象时返回空串**。
+
+        首页两排都是卡片，所以两排都能点赞（用户 2026-10-04 定的 B 方案）——
+        第一排是非遗项目、第二排是传承人，各自记各自的。
+        """
+        cn = self._page_name()
+        if cn == "home":
+            kind, idx = self.pages["home"].current_target()
+            return self._like_key(kind, idx)
+        if cn == "inheritor":
+            return self._like_key("inheritor", self.pages["inheritor"]._index)
+        if cn == "detail":
+            return self._like_key("project", self.pages["detail"]._pi)
+        if cn == "viewer":
+            # 3D 页记着自己加载的是哪个模型（load_model 时存下的）
+            slug = self.pages["viewer"]._slug
+            return ("proj:" + slug) if slug else ""
+        return ""            # 设置页上没有可点赞的对象
+
+    def _like_count_for(self, kind, idx) -> int:
+        """首页卡片角标来问"这一张有多少赞"（拉模式，见 HomePage.set_like_source）"""
+        key = self._like_key(kind, idx)
+        return self.likes.count(key) if key else 0
+
+    def _count_like(self, key) -> str:
+        """给 key 记一次赞，返回提示文案。只在 key 非空时被调用。"""
+        n = self.likes.add(key)
+        # 首页角标立刻跟上（它自己是拉模式的，得有人叫它一声）
+        self.pages["home"].refresh_likes()
+        return "点赞（共 %d 次）" % n
     def _static_yields_here(self,action):
         """这个静态动作在当前页面要不要**让位给动态模型**。
 
@@ -243,6 +304,13 @@ class MainWindow(QMainWindow):
         if self._static_count<config.STATIC_CONSISTENCY: return
         self._ocg(action,source="static")
     def _ocg(self,g,source="dynamic"):
+        # 点赞得有个"可点赞的对象"才做得成（设置页上就没有）。
+        # ⚠ 没有就**在这里直接返回，连冷却都不消耗** —— 否则访客在设置页比个大拇指
+        #   会白白静默 1.5 秒，而且提示胶囊还会谎报"已执行：点赞"。
+        #   这和"到了边界不响应"那种是两回事：那种确实执行了一次无效动作，
+        #   这种是**根本没有作用对象**。
+        like_key = self._current_like_key() if g=="like" else ""
+        if g=="like" and not like_key: return
         now=time.time()*1000.0
         # ============ 防重复触发：两道，都很短，且都不依赖机器快慢 ============
         # ① 间隙：上次触发之后，触发条件还没"断"过 → 不响应。
@@ -299,6 +367,10 @@ class MainWindow(QMainWindow):
         # "已执行"提示：屏幕下方居中弹一下（src/ui/toast.py）。
         # 视频页的左/右实际是快退/快进，文案跟着改。
         label = CONTROL_CN.get(g, g)
+        # 点赞就地做掉：文案里要带上"第几次"，所以执行与文案在这里一起算
+        # （like_key 在上面算过，非空才走得到这里）
+        if g=="like":
+            label = self._count_like(like_key)
         if g in ("swipe_left","swipe_right") and (
                 cn=="inheritor" or (cn=="detail" and self.pages["detail"].is_video_view())):
             label = "快退" if g=="swipe_left" else "快进"

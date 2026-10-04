@@ -32,6 +32,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import config
+from src.core import project_assets
+from src.core.project_data import INHERITORS
 from src.ui.main_window import MainWindow, IDX
 
 
@@ -89,12 +91,30 @@ class _FakeIt:
         self.active_calls += 1
 
 
+class _FakeLikes:
+    """点赞存档的桩。只关心"给谁 +1 了、加了几次"，不碰真文件。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def add(self, key, n=1):
+        self.calls.append(key)
+        return sum(1 for k in self.calls if k == key)
+
+
 class _Harness:
     """_ocg / _on_result 的最小运行环境"""
 
     def __init__(self, page="home"):
         self.clock = _Clock()
         self.pages = collections.defaultdict(_Calls)
+        # 点赞要问"当前是哪个对象"，而 _Calls 对未知属性一律返回**函数**，
+        # 这几个"查询型"的字段必须显式给出真值（下标/名字），不能靠桩兜
+        self.pages["home"] = _Calls(current_target=("project", 0))
+        self.pages["inheritor"]._index = 0
+        self.pages["detail"]._pi = 0
+        self.pages["viewer"]._slug = ""
+        self.likes = _FakeLikes()
         self.cw = _Calls()
         # _on_page_changed 会把这两个全局按钮一起置顶
         self.bc = _Calls()
@@ -157,6 +177,17 @@ class _Harness:
     def _static_yields_here(self, action):
         # 静态动作要不要在当前页面让位给动态模型（3D 页的「两指」是旋转模型）
         return MainWindow._static_yields_here(self, action)
+
+    # ---- 点赞（_ocg 会调前两个；_like_key 是 staticmethod，第三个直接拿来用）----
+    # ⚠ 必须再包一层 staticmethod：直接赋 `MainWindow._like_key` 拿到的是**裸函数**，
+    #   经 `self.` 调用时会把 self 一起绑进去，参数就多了一个。
+    _like_key = staticmethod(MainWindow._like_key)
+
+    def _current_like_key(self):
+        return MainWindow._current_like_key(self)
+
+    def _count_like(self, key):
+        return MainWindow._count_like(self, key)
 
     def _on_page_changed(self, idx):
         self._page_idx = idx
@@ -706,6 +737,124 @@ class TestStaticChannel(_Base):
         self.h._on_static(None)
         self.assertFalse(self.h._static_need_gap, "没有静态结果应视作条件不成立")
         self.assertIsNone(self.h._static_lg)
+
+
+class TestLikeCounting(_Base):
+    """点赞（静态 👍）→ 给**当前这个对象** +1
+
+    这一批守的全是**"算到谁头上"** —— 算错了不报错，只是数字悄悄记到别人身上，
+    界面上完全看不出来（也正是这个项目最讨厌的那类坏法）。
+
+    ⚠ **键必须稳定**：项目用 slug 不用序号。序号会随项目增减/调序全体错位。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.h.pages["settings"] = _Calls()
+
+    def keys(self):
+        return self.h.likes.calls
+
+    # ---- 每个页面上"当前对象"是谁 ----
+    def test_首页选中项目卡记到那个项目(self):
+        self.h.pages["home"] = _Calls(current_target=("project", 2))
+        self.h.fire("like")
+        self.assertEqual(self.keys(), ["proj:" + project_assets.slug_of(2)])
+
+    def test_首页选中传承人卡记到那个人(self):
+        """⚠ 首页第二排是**传承人**不是项目。混掉的话点赞会记到某个项目头上。"""
+        if not INHERITORS:
+            self.skipTest("没有传承人数据")
+        self.h.pages["home"] = _Calls(current_target=("inheritor", 1))
+        self.h.fire("like")
+        self.assertEqual(self.keys(), ["inh:" + INHERITORS[1]["name"]])
+
+    def test_详情页记到那个项目(self):
+        self.h._page_idx = IDX["detail"]
+        self.h.pages["detail"]._pi = 4
+        self.h.fire("like")
+        self.assertEqual(self.keys(), ["proj:" + project_assets.slug_of(4)])
+
+    def test_3D页记到它加载的那个模型(self):
+        """⚠ 3D 页自己记着 `_slug`（load_model 时存下的），不该去猜。"""
+        self.h._page_idx = IDX["viewer"]
+        self.h.pages["viewer"]._slug = "baogong"
+        self.h.fire("like")
+        self.assertEqual(self.keys(), ["proj:baogong"])
+
+    def test_传承人页记到那一位(self):
+        if not INHERITORS:
+            self.skipTest("没有传承人数据")
+        self.h._page_idx = IDX["inheritor"]
+        self.h.pages["inheritor"]._index = 3
+        self.h.fire("like")
+        self.assertEqual(self.keys(), ["inh:" + INHERITORS[3]["name"]])
+
+    # ---- 键的稳定性 ----
+    def test_项目键用slug不用序号(self):
+        """⚠ 序号会随项目增减/调序**全体错位** —— 点赞数就悄悄串到别的项目上。
+
+        这条直接钉死键的形态：一旦有人图省事改成序号，它立刻变红。
+        """
+        key = MainWindow._like_key("project", 2)
+        self.assertEqual(key, "proj:" + project_assets.slug_of(2))
+        self.assertNotIn(project_assets.slug_of(2), ("2", "02"))
+
+    def test_越界与空值都给空串(self):
+        self.assertEqual(MainWindow._like_key("project", 999), "")
+        self.assertEqual(MainWindow._like_key("project", -1), "")
+        self.assertEqual(MainWindow._like_key("inheritor", 999), "")
+        self.assertEqual(MainWindow._like_key("", 0), "")
+
+    # ---- 没有对象时 ----
+    def test_设置页不记也不消耗冷却(self):
+        """⚠ 设置页上没有可点赞的对象。
+
+        这里**连冷却都不该消耗** —— 否则访客比个大拇指会白白静默 1.5 秒，
+        而且提示胶囊还会谎报"已执行：点赞"。
+        """
+        self.h._page_idx = IDX["settings"]
+        self.h.fire("like")
+        self.assertEqual(self.keys(), [], "设置页不该记点赞")
+        self.assertEqual(self.h._cooldown_until, 0.0, "不该消耗冷却")
+        self.assertFalse(self.h._need_gap)
+
+    def test_3D页还没加载模型时不记(self):
+        self.h._page_idx = IDX["viewer"]
+        self.h.pages["viewer"]._slug = ""
+        self.h.fire("like")
+        self.assertEqual(self.keys(), [])
+
+    # ---- 提示文案与完整链路 ----
+    def test_提示文案带上次数(self):
+        self.h.pages["home"] = _Calls(current_target=("project", 0))
+        self.h.fire("like")
+        self.assertIn("1", self.h._toast_text)
+        self.h.fire("like")
+        self.assertIn("2", self.h._toast_text)
+        self.assertNotIn("已执行", self.h._toast_text.replace("✔ 已执行：", ""))
+
+    def test_走完整的静态通道也能记上(self):
+        """前面几条走的是 `fire()`（直接调闸门）。这条走**真的静态通道**：
+        连续两帧 👍 才触发，触发后记到该记的人头上。"""
+        self.h.pages["home"] = _Calls(current_target=("project", 1))
+        for _ in range(config.STATIC_CONSISTENCY):
+            self.h._on_static({"label": "like", "confidence": 0.99})
+        self.assertEqual(self.keys(), ["proj:" + project_assets.slug_of(1)])
+
+    def test_举着不放只记一次(self):
+        """举着 👍 不放，靠静态通道自己的间隙挡住（不该一直涨）。"""
+        self.h.pages["home"] = _Calls(current_target=("project", 0))
+        for _ in range(10):
+            self.h._on_static({"label": "like", "confidence": 0.99})
+        self.assertEqual(len(self.keys()), 1, "举着不放重复记了")
+
+    def test_同一个对象连做两次要过冷却(self):
+        self.h.pages["home"] = _Calls(current_target=("project", 0))
+        self.h.fire("like")
+        self.h._static_need_gap = False          # 松开过
+        self.h.ocg("like", source="static")      # 冷却期内
+        self.assertEqual(len(self.keys()), 1, "冷却期内不该再记一次")
 
 
 class TestToast(_Base):

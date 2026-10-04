@@ -1,7 +1,7 @@
 """设置页：手势说明 / 现场调参 / 图片来源"""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QSlider,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSlider,
     QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget, QFrame, QScrollArea,
     QSizePolicy
 )
@@ -38,6 +38,7 @@ _STATIC_HEADERS = ["手势", "动作"]
 _STATIC_ROWS = [
     ("OK 手势", "返回首页"),
     ("比耶",    "进入手势说明页"),
+    ("点赞",    "给当前项目 / 传承人点赞"),
 ]
 
 _FOOTNOTES = [
@@ -84,6 +85,40 @@ PySide6（LGPL v3）、PyTorch（BSD-3-Clause）、OpenCV（Apache-2.0）。</p>
 """
 
 
+def _flat_button(text, slot, w=130, h=40, pt=12) -> QPushButton:
+    """设置页上那种白底圆角按钮。
+
+    这一页原本把同一段样式抄了三遍（返回首页 / 保存为默认 / 清空点赞计数），
+    字号和圆角还各差一点 —— 抽出来，改一次全都跟着变。
+    """
+    b = QPushButton(text)
+    b.setFixedSize(w, h)
+    b.setFont(QFont("Microsoft YaHei", pt))
+    b.setStyleSheet(
+        "QPushButton { background: rgba(255,255,255,0.85); border: 1px solid #aaa;"
+        " border-radius: 8px; } QPushButton:hover { background: #fff; }")
+    b.clicked.connect(slot)
+    return b
+
+
+def _scroll(inner: QWidget) -> QScrollArea:
+    """把一个控件套进「无边框、透明」的滚动区。设置页三栏都用它。
+
+    ⚠️ **这一层不是装饰，是让窗口高度能缩的必要条件。**
+    里面的内容往往有较大的最小高度（比如按行数撑到固定高度的表格），
+    不套滚动区的话，这个最小高度会一路顶到主窗口上 ——
+    表现就是**宽度能拉、高度拉不动**（2026-10 用户报的，当时只有
+    「手势说明」那一栏没套，就把窗口最小高度顶到了 943）。
+    """
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QFrame.NoFrame)
+    sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
+                     "QScrollArea > QWidget > QWidget{background:transparent;}")
+    sa.setWidget(inner)
+    return sa
+
+
 def _build_table(headers, rows, row_h=36) -> QTableWidget:
     """按内容撑到刚好高的只读表格。手势说明那一页有两张（动态 / 静态），共用这个。
 
@@ -124,10 +159,12 @@ class SettingsPage(QWidget):
     """手势操作说明 + 现场调参 + 图片来源"""
 
     go_home = Signal()
+    likes_reset = Signal()      # 点赞清零之后发一下，主窗口拿去刷新首页角标
 
     def __init__(self):
         super().__init__()
         self._sliders = {}      # key -> (QSlider, QLabel 数值)
+        self._likes = None      # 点赞存档，由主窗口给（见 set_like_store）
         self._setup_ui()
 
     def paintEvent(self, event):
@@ -168,14 +205,7 @@ class SettingsPage(QWidget):
 
         nav = QHBoxLayout()
         nav.setAlignment(Qt.AlignCenter)
-        btn_home = QPushButton("返回首页")
-        btn_home.setFixedSize(140, 44)
-        btn_home.setFont(QFont("Microsoft YaHei", 13))
-        btn_home.setStyleSheet(
-            "QPushButton { background: rgba(255,255,255,0.8); border: 1px solid #aaa;"
-            " border-radius: 8px; } QPushButton:hover { background: rgba(255,255,255,1); }")
-        btn_home.clicked.connect(self.go_home.emit)
-        nav.addWidget(btn_home)
+        nav.addWidget(_flat_button("返回首页", self.go_home.emit, 140, 44, 13))
         layout.addLayout(nav)
 
     def show_gestures(self):
@@ -189,8 +219,14 @@ class SettingsPage(QWidget):
     # ---------------- 标签页一：手势说明 ----------------
     def _tab_gestures(self) -> QWidget:
         w = QWidget()
-        lo = QVBoxLayout(w)
-        lo.setContentsMargins(16, 16, 16, 16)
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(10)
+
+        inner = QWidget()
+        inner.setStyleSheet("background: transparent;")
+        lo = QVBoxLayout(inner)
+        lo.setContentsMargins(0, 0, 8, 0)
         lo.setSpacing(10)
 
         section = QLabel("动态手势（识别「手的动作」）")
@@ -220,6 +256,7 @@ class SettingsPage(QWidget):
         tip.setStyleSheet("background: transparent; color: #333;")
         lo.addWidget(tip)
         lo.addStretch(1)          # 多余空间留在底部，而不是摊进表体
+        outer.addWidget(_scroll(inner))
         return w
 
     # ---------------- 标签页二：现场调参 ----------------
@@ -246,27 +283,14 @@ class SettingsPage(QWidget):
             lo.addLayout(self._param_row(spec))
         lo.addStretch()
 
-        sa = QScrollArea()
-        sa.setWidgetResizable(True)
-        sa.setFrameShape(QFrame.NoFrame)
-        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
-        sa.setWidget(inner)
-        outer.addWidget(sa, stretch=1)
+        outer.addWidget(_scroll(inner), stretch=1)
 
         # 操作按钮 + 状态反馈
         row = QHBoxLayout()
         row.setAlignment(Qt.AlignCenter)
         row.setSpacing(16)
         for text, slot in (("保存为默认", self._on_save), ("恢复默认", self._on_reset)):
-            b = QPushButton(text)
-            b.setFixedSize(130, 40)
-            b.setFont(QFont("Microsoft YaHei", 12))
-            b.setStyleSheet(
-                "QPushButton { background: rgba(255,255,255,0.85); border: 1px solid #aaa;"
-                " border-radius: 8px; } QPushButton:hover { background: #fff; }")
-            b.clicked.connect(slot)
-            row.addWidget(b)
+            row.addWidget(_flat_button(text, slot))
         outer.addLayout(row)
 
         self._status = QLabel("")
@@ -274,6 +298,32 @@ class SettingsPage(QWidget):
         self._status.setFont(QFont("Microsoft YaHei", 11))
         self._status.setStyleSheet("background: transparent; color: #2c7a2c;")
         outer.addWidget(self._status)
+
+        # ---- 点赞计数 ----
+        # 它不是"参数"，是**运行时数据**；放在这一栏是因为这里是操作员的地盘，
+        # 而且它和上面那两个按钮一样属于"会改掉长期状态"的操作。
+        sep = QFrame()
+        sep.setFrameShape(QFrame.HLine)
+        sep.setStyleSheet("border: none; border-top: 1px solid rgba(0,0,0,0.15);")
+        outer.addWidget(sep)
+
+        self._like_summary = QLabel("")
+        self._like_summary.setAlignment(Qt.AlignCenter)
+        self._like_summary.setFont(QFont("Microsoft YaHei", 11))
+        self._like_summary.setStyleSheet("background: transparent; color: #333;")
+        outer.addWidget(self._like_summary)
+
+        like_row = QHBoxLayout()
+        like_row.setAlignment(Qt.AlignCenter)
+        self._like_btn = _flat_button("清空点赞计数", self._on_reset_likes, 150, 40)
+        like_row.addWidget(self._like_btn)
+        outer.addLayout(like_row)
+
+        self._like_status = QLabel("")
+        self._like_status.setAlignment(Qt.AlignCenter)
+        self._like_status.setFont(QFont("Microsoft YaHei", 10))
+        self._like_status.setStyleSheet("background: transparent; color: #b8860b;")
+        outer.addWidget(self._like_status)
         return w
 
     def _param_row(self, spec: dict) -> QVBoxLayout:
@@ -330,6 +380,97 @@ class SettingsPage(QWidget):
         s.valueChanged.connect(on_change)
         return box
 
+    # ---------------- 点赞计数 ----------------
+    def set_like_store(self, store):
+        """把点赞存档交给这一页读 / 清（主窗口给的）。"""
+        self._likes = store
+        self.refresh_like_summary()
+
+    def refresh_like_summary(self):
+        if self._likes is None or not hasattr(self, "_like_summary"):
+            return
+        d = self._likes.all_counts()
+        if d:
+            self._like_summary.setText(
+                "点赞：已有 %d 项被赞过，共 %d 次（数字显示在首页卡片右上角）"
+                % (len(d), sum(d.values())))
+        else:
+            self._like_summary.setText("点赞：还没有任何记录")
+
+    def _confirm_box(self, title, text) -> QMessageBox:
+        """搭出确认框（**只搭不弹**）。
+
+        ⚠️ **必须显式给底色，不能用默认样式。** 主窗口在页面容器上设过
+        `background: transparent`，而 **Qt 的样式表会传给子控件** ——
+        QMessageBox 是这一页的子窗口，底色就跟着变成透明的，
+        在 Windows 上直接渲染成**一片纯黑**（实测平均亮度 229 → 3.8），
+        按钮在哪都看不见，操作员根本没法确认。
+
+        拆成单独一个方法是为了**能测它的配色** —— 弹一个模态框会把用例挂死，
+        但搭出来 `grab()` 一下不会。
+        """
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.setIcon(QMessageBox.Question)
+        box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        box.setDefaultButton(QMessageBox.No)     # 默认落在"否"，别让回车误清
+        # Qt 默认给的是英文 Yes/No（没装翻译）—— 换成说清楚要干什么的中文
+        box.button(QMessageBox.Yes).setText("确定清空")
+        box.button(QMessageBox.No).setText("取消")
+        box.setStyleSheet(
+            # 字体显式指定，与其余界面一致（别指望系统默认字体）
+            "QMessageBox { background: #f4f4f4; }"
+            'QMessageBox QLabel { color: #222; background: transparent;'
+            ' font-family: "Microsoft YaHei"; font-size: 14px; }'
+            'QMessageBox QPushButton { background: #ffffff; color: #222;'
+            ' border: 1px solid #999; border-radius: 6px;'
+            ' padding: 6px 20px; min-width: 72px;'
+            ' font-family: "Microsoft YaHei"; font-size: 14px; }'
+            "QMessageBox QPushButton:hover { background: #e6e6e6; }"
+            "QMessageBox QPushButton:default { background: #dceaf5;"
+            " border-color: #4a90c4; }")
+        return box
+
+    def _ask(self, title, text) -> bool:
+        """弹确认框。做成**方法**是为了让用例能换掉它 ——
+        模态框会把离屏测试**挂死**（Qt 等不到人点按钮）。"""
+        box = self._confirm_box(title, text)
+        try:
+            return box.exec() == QMessageBox.Yes
+        finally:
+            box.deleteLater()
+
+    def _on_reset_likes(self):
+        """清空点赞计数。
+
+        ⚠️ **必须先看一眼有多少、再确认** —— 这是清掉长期攒下来的数据，
+        点错了没法撤销，而且没有任何地方能恢复。
+        """
+        if self._likes is None:
+            # 宁可说一句，也别**点了没反应**（那种坏法没人查得出来）
+            self._like_status.setText("没有接到点赞存档，这个按钮用不了")
+            return
+        d = self._likes.all_counts()
+        if not d:
+            self._like_status.setStyleSheet("background: transparent; color: #b8860b;")
+            self._like_status.setText("还没有任何点赞，不用清")
+            return
+        if not self._ask("清空点赞计数",
+                         "将清空全部 %d 项的点赞数（共 %d 次）。\n\n"
+                         "清掉之后无法恢复，确定吗？" % (len(d), sum(d.values()))):
+            return
+        self._likes.reset()
+        self.refresh_like_summary()
+        self._like_status.setStyleSheet("background: transparent; color: #2c7a2c;")
+        self._like_status.setText("✔ 点赞计数已清空")
+        self.likes_reset.emit()
+
+    def showEvent(self, e):
+        super().showEvent(e)
+        # 数字可能在别的页面上被改过（或者刚被清过），进来时重新算一遍
+        self.refresh_like_summary()
+
     def _mark_dirty(self):
         self._status.setStyleSheet("background: transparent; color: #b8860b;")
         self._status.setText("当前为临时设置（重启后回到上次保存的值）")
@@ -372,11 +513,5 @@ class SettingsPage(QWidget):
         label.setStyleSheet("background: transparent; color: #333;")
         label.setTextInteractionFlags(Qt.TextBrowserInteraction)
 
-        sa = QScrollArea()
-        sa.setWidgetResizable(True)
-        sa.setFrameShape(QFrame.NoFrame)
-        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
-        sa.setWidget(label)
-        lo.addWidget(sa)
+        lo.addWidget(_scroll(label))
         return w

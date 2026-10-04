@@ -48,8 +48,8 @@ STATIC_WEIGHTS_PATH = os.path.join(ROOT_DIR, "weights", "hagrid_resnet18.pth")
 #   **观测机会数量差一个量级**：动态手势一次只有一发，错过就没了；
 #   静态姿势被持续观测（推理每 0.6 秒一次），错过一帧的成本是零。
 #
-# ⚠ 它**不在 config.TUNABLE 里**，所以现场改不了（也没法被 config_local.json 覆盖），
-#   只能改这里再重启。
+# ⚠ 它是**现场可调项**（设置页「静态手势门槛」滑条）—— 这个值在一天内被改过三轮，
+#   正是最需要现场边看边调的那个，所以必须留在滑条上。
 STATIC_CONFIDENCE_THRESHOLD = 0.8
 # 连续几帧都判成同一个绑定类才触发。静态姿势是**被保持**的，多等一帧几乎不花钱，
 # 而单帧的误判会被这一条挡掉。设成 1 = 一帧即触发。
@@ -258,23 +258,40 @@ GESTURE_LABELS: dict = {}
 TUNABLE: list = [
     {"key": "CONFIDENCE_THRESHOLD", "label": "触发置信度门槛",
      "min": 0.30, "max": 0.95, "decimals": 2,
-     "hint": "低于此值的识别结果不触发任何操作。太低容易误触发，太高会变迟钝。"},
+     "hint": "低于此值的识别结果不触发任何操作。它同时也是「间隙」的门槛 —— "
+             "只有掉到它以下，才认为你松手了、允许下一次触发。"},
     {"key": "DISPLAY_CONFIDENCE", "label": "显示置信度门槛",
-     "min": 0.10, "max": 0.80, "decimals": 2,
-     "hint": "悬浮窗显示识别结果所需的最低置信度，低于则显示“无手势”。只影响显示。"},
+     # ⚠ 上限**故意**跟着 DISPLAY_SWITCH_CONFIDENCE 走：两者顶到同值就等于把
+     #   "切换门槛"那道保护取消了 —— 任何够显示的结果都能立刻抢走当前显示，
+     #   悬浮窗标签会一直换来换去（2026-09 之前就是这个毛病）。
+     #   这条路径**操作员在展台上就能走**，不用改代码，所以必须从区间上堵死。
+     "min": 0.10, "max": DISPLAY_SWITCH_CONFIDENCE - 0.05, "decimals": 2,
+     "hint": "悬浮窗显示识别结果所需的最低置信度，低于则显示“无手势”。只影响显示。"
+             "上限刻意到不了「显示切换门槛」，否则标签会被频繁抢走。"},
     {"key": "CONSISTENCY_COUNT", "label": "去抖次数",
      "min": 1, "max": 6, "decimals": 0,
      "hint": "连续 N 次识别出同一动作才触发。1 = 一次即触发（默认）；嫌太灵敏往上调。"},
     {"key": "ACTION_COOLDOWN_MS", "label": "动作冷却",
      "min": 300, "max": 3000, "decimals": 0, "unit": "ms",
-     "hint": "触发一次操作后、且用户松手后的静默时间，防止一个手势被连读成多次翻页。"},
+     "hint": "触发一次操作后，这么久内不再响应。从触发那一刻起算，"
+             "不是从松手起算 —— 从松手起算会让每次操作都多等一段“手放下的时间”。"},
     {"key": "DISPLAY_HOLD_MS", "label": "显示保持",
      "min": 0, "max": 3000, "decimals": 0, "unit": "ms",
      "hint": "手势消失后仍保留显示的时间，避免瞬时动态手势一闪就没。"},
+    {"key": "STATIC_CONFIDENCE_THRESHOLD", "label": "静态手势门槛",
+     "min": 0.20, "max": 0.90, "decimals": 2,
+     "hint": "OK / 比耶两个静态手势的触发门槛。实测 top1 稳定后往往只有五六成，"
+             "所以别定得太高 —— 定在模型实际输出之上就等于“手势做对了也不触发”。"},
 ]
 
 # 本地调参文件：只有点“保存为默认”才会生成，不随版本库分发
 LOCAL_CONFIG_PATH = os.path.join(ROOT_DIR, "config_local.json")
+
+# 点赞计数存档（按项目 slug 记，见 src/core/like_store.py）。
+# 和 config_local.json 一样是**每台展台各自一份**的运行时数据，已 gitignore。
+# ⚠ 要清空它用设置页那个按钮，别手改文件 —— 手改坏了不会报错，
+#   只会静默地从某个地方重新开始数。
+LIKE_COUNT_PATH = os.path.join(ROOT_DIR, "likes.json")
 
 # 记录代码里的默认值（必须在应用本地覆盖之前抓取）
 DEFAULTS: dict = {spec["key"]: globals()[spec["key"]] for spec in TUNABLE}
