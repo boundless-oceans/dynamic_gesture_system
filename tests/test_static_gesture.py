@@ -155,12 +155,26 @@ class TestBindingPolicy(unittest.TestCase):
     产生两个互相矛盾的意图。ok / like 恰好是唯一不冲突的两个。
     """
 
-    def test_只绑了两个(self):
-        self.assertEqual(set(STATIC_TO_CONTROL), {"ok", "peace"})
+    def test_绑定表就这三个(self):
+        """⚠ 加第四个之前先读这一条：每多绑一个，就多一分"两只手同时被点燃"的机会。
+
+        这三个是逐个挑出来的（理由见下两条），**不是"能用就绑"**。
+        """
+        self.assertEqual(set(STATIC_TO_CONTROL), {"ok", "peace", "like"})
 
     def test_职责划分(self):
         self.assertEqual(STATIC_TO_CONTROL["ok"], "home")      # OK 手势 → 返回首页
         self.assertEqual(STATIC_TO_CONTROL["peace"], "guide")  # 比耶 → 手势说明页
+        self.assertEqual(STATIC_TO_CONTROL["like"], "like")    # 点赞 → 给当前对象 +1
+
+    def test_点赞的手型不冲突但动作冲突(self):
+        """竖拇指（👍）**手型**不与任何在用动态手势撞车，所以不用让位。
+
+        ⚠ 但它有另一种毛病，实测报过：**为了比这个手势把手抬起来，"抬"这个动作
+        本身会被动态模型认成「向左抛出」或「单击」**。那是**动作**冲突，跟页面无关，
+        所以 `STATIC_YIELD_ON_PAGE` 里**没有**它 —— 要治得治动态那一侧。
+        """
+        self.assertNotIn("like", STATIC_YIELD_ON_PAGE)
 
     def test_绑定的都是合法控制手势(self):
         for label, ctrl in STATIC_TO_CONTROL.items():

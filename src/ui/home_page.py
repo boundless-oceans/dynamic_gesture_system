@@ -361,6 +361,16 @@ class HomePage(BasePage):
             return ""
         return self._kinds[self._current][0]
 
+    def current_target(self) -> tuple:
+        """当前选中的是"哪一个"：`("project", i)` 或 `("inheritor", j)`。
+
+        ⚠ 与 `current_index()` 不是一回事：那个是**扁平**索引（全部卡片里的第几张），
+        这个是**各自那一排里**的下标。点赞要按后者算，因为它才是"这是哪个项目/哪个人"。
+        """
+        if not self._kinds:
+            return ("", -1)
+        return self._kinds[self._current]
+
     def current_index(self) -> int:
         """当前选中的**扁平索引**（全部卡片里的第几张）"""
         return self._current

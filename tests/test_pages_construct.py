@@ -184,6 +184,72 @@ class TestMainWindowConstruct(unittest.TestCase):
         self.assertEqual(self.win.stack.currentIndex(), IDX["viewer"],
                          "3D 页上比耶不该跳去手势说明页（那一页的两指是旋转模型）")
 
+    def test_点赞记到当前对象头上(self):
+        """端到端：真实 MainWindow 上，每个页面点赞都记到**该记的那个对象**上。
+
+        ⚠ 桩测的是闸门逻辑（`test_gesture_gate.TestLikeCounting`）；这里验的是
+        **接线** —— 真实页面上的 `_pi` / `_index` / `current_target()` 到底拿不拿得到。
+        拿不到就退化成空串，那样**点赞静默不生效**（不报错、看着一切正常）。
+        """
+        import shutil
+        import tempfile
+        from src import config
+        from src.core.like_store import LikeStore
+        from src.core.project_assets import slug_of
+        from src.core.project_data import INHERITORS, PROJECTS
+        from src.ui.main_window import IDX
+
+        d = tempfile.mkdtemp(prefix="likes-e2e-")
+        saved, self.win.likes = self.win.likes, LikeStore(os.path.join(d, "likes.json"))
+
+        def like(label="like"):
+            """走**完整的静态通道**喂一次点赞（要连喂两帧）"""
+            self.win._cooldown_until = 0.0
+            self.win._static_need_gap = False
+            self.win._static_lg = None
+            self.win._static_count = 0
+            for _ in range(config.STATIC_CONSISTENCY):
+                self.win._on_static({"label": label, "confidence": 0.99})
+
+        try:
+            # 首页第一排：选中第 3 个项目卡
+            hp = self.win.pages["home"]
+            self.win.stack.setCurrentIndex(IDX["home"])
+            _app.processEvents()
+            hp._move(2)
+            _app.processEvents()
+            like()
+            self.assertEqual(self.win.likes.count("proj:" + slug_of(2)), 1)
+
+            # 首页第二排：选中第 2 位传承人（⚠ 不是"项目 0"）
+            hp._move(len(PROJECTS) + 1)
+            _app.processEvents()
+            like()
+            self.assertEqual(self.win.likes.count("inh:" + INHERITORS[1]["name"]), 1,
+                             "首页第二排的点赞记到项目上去了")
+
+            # 详情页
+            self.win._go_detail(3)
+            _app.processEvents()
+            like()
+            self.assertEqual(self.win.likes.count("proj:" + slug_of(3)), 1)
+
+            # 传承人页
+            self.win._enter_inheritor(2)
+            _app.processEvents()
+            like()
+            self.assertEqual(self.win.likes.count("inh:" + INHERITORS[2]["name"]), 1)
+
+            # 设置页：没有可点赞的对象 → 什么都不记
+            self.win.stack.setCurrentIndex(IDX["settings"])
+            _app.processEvents()
+            before = dict(self.win.likes.all_counts())
+            like()
+            self.assertEqual(self.win.likes.all_counts(), before, "设置页不该记点赞")
+        finally:
+            self.win.likes = saved
+            shutil.rmtree(d, ignore_errors=True)
+
     def test_没绑定的静态类不产生任何动作(self):
         """端到端再确认一次"弃权" —— 架构 A 的安全感全在这上面。"""
         from src.ui.main_window import IDX

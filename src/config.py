@@ -276,6 +276,12 @@ TUNABLE: list = [
 # 本地调参文件：只有点“保存为默认”才会生成，不随版本库分发
 LOCAL_CONFIG_PATH = os.path.join(ROOT_DIR, "config_local.json")
 
+# 点赞计数存档（按项目 slug 记，见 src/core/like_store.py）。
+# 和 config_local.json 一样是**每台展台各自一份**的运行时数据，已 gitignore。
+# ⚠ 要清空它用设置页那个按钮，别手改文件 —— 手改坏了不会报错，
+#   只会静默地从某个地方重新开始数。
+LIKE_COUNT_PATH = os.path.join(ROOT_DIR, "likes.json")
+
 # 记录代码里的默认值（必须在应用本地覆盖之前抓取）
 DEFAULTS: dict = {spec["key"]: globals()[spec["key"]] for spec in TUNABLE}
 
