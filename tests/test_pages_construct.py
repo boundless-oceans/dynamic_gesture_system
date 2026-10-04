@@ -339,6 +339,44 @@ class TestMainWindowConstruct(unittest.TestCase):
             self.win.likes = saved
             shutil.rmtree(d, ignore_errors=True)
 
+    def test_窗口能缩到默认尺寸以下(self):
+        """⚠ **真实踩过**：设置页「手势说明」那一栏没套滚动区，里面那两张
+        *按行数撑到固定高度*的表格，就把**主窗口的最小高度**顶到了 **943** ——
+        比窗口自己的默认高度（800）还大。
+
+        表现就是**"宽度能拉、高度拉不动"**，而且**连它自己的默认尺寸都到不了**。
+
+        原理：`QStackedLayout` 取**所有页面**（含隐藏的）最小尺寸里**最大**的那个，
+        所以随便哪一页里有个大的固定高度，都会一路顶到主窗口上 ——
+        改单个页面的时候很难联想到它在卡窗口。
+        """
+        win = self.win
+        old = win.size()
+        try:
+            win.resize(1280, 800)                       # MainWindow 里的默认尺寸
+            _app.processEvents()
+            self.assertEqual(win.height(), 800,
+                             "连窗口自己的默认高度都到不了 —— 高度会调不动")
+            win.resize(1280, 520)
+            _app.processEvents()
+            self.assertLess(win.height(), 800, "高度缩不动")
+        finally:
+            win.resize(old)
+            _app.processEvents()
+
+    def test_没有哪个页面把窗口高度顶得太高(self):
+        """上一条只测了"窗口"，这条**点名是哪一页**干的。
+
+        ⚠ 600 不是硬标准，是个**明确的红线**：改单个页面时很难联想到
+        "我在卡整个窗口"，所以给出一个数 + 指出页面名，比"越小越好"有用。
+        **别为了通过它去调这个数字** —— 该改的是那个把它顶上去的页面。
+        """
+        for name, p in self.win.pages.items():
+            with self.subTest(页面=name):
+                h = p.minimumSizeHint().height()
+                self.assertLessEqual(h, 600,
+                                     f"{name} 页的最小高度是 {h}，会把窗口高度顶住")
+
     def test_设置页与主窗口用的是同一个点赞存档(self):
         """⚠ 设置页自己持有一份引用（`set_like_store`）。主窗口忘了给的话，
         "清空点赞计数"按钮会**点了没反应**，而且不报错。

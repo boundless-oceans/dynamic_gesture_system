@@ -101,6 +101,24 @@ def _flat_button(text, slot, w=130, h=40, pt=12) -> QPushButton:
     return b
 
 
+def _scroll(inner: QWidget) -> QScrollArea:
+    """把一个控件套进「无边框、透明」的滚动区。设置页三栏都用它。
+
+    ⚠️ **这一层不是装饰，是让窗口高度能缩的必要条件。**
+    里面的内容往往有较大的最小高度（比如按行数撑到固定高度的表格），
+    不套滚动区的话，这个最小高度会一路顶到主窗口上 ——
+    表现就是**宽度能拉、高度拉不动**（2026-10 用户报的，当时只有
+    「手势说明」那一栏没套，就把窗口最小高度顶到了 943）。
+    """
+    sa = QScrollArea()
+    sa.setWidgetResizable(True)
+    sa.setFrameShape(QFrame.NoFrame)
+    sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
+                     "QScrollArea > QWidget > QWidget{background:transparent;}")
+    sa.setWidget(inner)
+    return sa
+
+
 def _build_table(headers, rows, row_h=36) -> QTableWidget:
     """按内容撑到刚好高的只读表格。手势说明那一页有两张（动态 / 静态），共用这个。
 
@@ -201,8 +219,14 @@ class SettingsPage(QWidget):
     # ---------------- 标签页一：手势说明 ----------------
     def _tab_gestures(self) -> QWidget:
         w = QWidget()
-        lo = QVBoxLayout(w)
-        lo.setContentsMargins(16, 16, 16, 16)
+        outer = QVBoxLayout(w)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(10)
+
+        inner = QWidget()
+        inner.setStyleSheet("background: transparent;")
+        lo = QVBoxLayout(inner)
+        lo.setContentsMargins(0, 0, 8, 0)
         lo.setSpacing(10)
 
         section = QLabel("动态手势（识别「手的动作」）")
@@ -232,6 +256,7 @@ class SettingsPage(QWidget):
         tip.setStyleSheet("background: transparent; color: #333;")
         lo.addWidget(tip)
         lo.addStretch(1)          # 多余空间留在底部，而不是摊进表体
+        outer.addWidget(_scroll(inner))
         return w
 
     # ---------------- 标签页二：现场调参 ----------------
@@ -258,13 +283,7 @@ class SettingsPage(QWidget):
             lo.addLayout(self._param_row(spec))
         lo.addStretch()
 
-        sa = QScrollArea()
-        sa.setWidgetResizable(True)
-        sa.setFrameShape(QFrame.NoFrame)
-        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
-        sa.setWidget(inner)
-        outer.addWidget(sa, stretch=1)
+        outer.addWidget(_scroll(inner), stretch=1)
 
         # 操作按钮 + 状态反馈
         row = QHBoxLayout()
@@ -494,11 +513,5 @@ class SettingsPage(QWidget):
         label.setStyleSheet("background: transparent; color: #333;")
         label.setTextInteractionFlags(Qt.TextBrowserInteraction)
 
-        sa = QScrollArea()
-        sa.setWidgetResizable(True)
-        sa.setFrameShape(QFrame.NoFrame)
-        sa.setStyleSheet("QScrollArea{background:transparent;border:none;}"
-                         "QScrollArea > QWidget > QWidget{background:transparent;}")
-        sa.setWidget(label)
-        lo.addWidget(sa)
+        lo.addWidget(_scroll(label))
         return w
