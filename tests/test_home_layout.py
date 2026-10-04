@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QApplication
 
 from src import config
 from src.core.project_data import INHERITORS, PROJECTS
+from src.ui import home_page as hp
 from src.ui.home_page import HomePage
 from src.ui.main_window import IDX, MainWindow
 
@@ -148,14 +149,95 @@ class TestNavigation(_HomeBase):
         self.page._up()
         self.assertEqual(self.page.current_index(), 2, "已经在第一排，向上不该动")
 
-    def test_下面没有对位就不动(self):
-        """两排不一样长时（现在 6 个 5 位），最长那排多出来的卡下面没有东西"""
-        if len(PROJECTS) <= len(INHERITORS):
-            self.skipTest("需要第一排比第二排长才有意义")
-        self.page._move(len(PROJECTS) - 1)
-        before = self.page.current_index()
-        self.page._down()
-        self.assertEqual(self.page.current_index(), before, "下面没有对位就不该动")
+    # 注：「下面没有对位就不动」原先是这一类里的一条用例，靠真实数据恰好不等长
+    # 才跑。两排都补到 8 位后它自己静音了，已**删掉** —— 那种情形现在由
+    # 下面的 TestUnevenRows 自己造数据来测（两个方向都测），不再看数据脸色。
+
+
+class TestUnevenRows(unittest.TestCase):
+    """两排**不一样长**时的跨排边界。
+
+    ⚠ 这一类原来靠真实数据恰好不等长才跑。2026-10 两排都补到 8 位之后，
+    它**自己静音了**：断言还在、却再也不执行 —— 正是这个项目最怕的那种坏法。
+    现在改成把两个列表打成不等长，**由测试自己造出前提**，不再看数据脸色。
+
+    两个方向都要测，而且它们**不对称**：
+      第一排更长 → 多出来的项目卡，`_down` 要有边界检查
+      第二排更长 → 多出来的传承人卡，`_up` 要有边界检查   ← 这里原先少一个检查
+    """
+
+    NP, NI = 5, 3       # 第一排更长
+    NP2, NI2 = 3, 5     # 第二排更长 —— `_up` 的毛病只在这个方向露出
+
+    def setUp(self):
+        _need(len(PROJECTS) + len(INHERITORS), "卡片数据")
+        self._saved_anim = config.HOME_SELECT_ANIM_MS
+        config.HOME_SELECT_ANIM_MS = 0
+        self._saved_data = (hp.PROJECTS, hp.INHERITORS)
+
+    def tearDown(self):
+        hp.PROJECTS, hp.INHERITORS = self._saved_data
+        config.HOME_SELECT_ANIM_MS = self._saved_anim
+        self.page.close()
+
+    def _make(self, n_p, n_i):
+        """按指定的排长造一个首页。
+
+        ⚠ 两个列表要**一直**打着补丁（不只构造那一刻）：`_row1` 是属性，
+        每次导航都现读模块全局。构造完就还原的话，卡片是 5 张、跨排却按 8 算。
+        """
+        hp.PROJECTS = [{"name": "项目%d" % i} for i in range(n_p)]
+        hp.INHERITORS = [{"name": "传承人%d" % j, "project": "测试项目"}
+                         for j in range(n_i)]
+        self.page = hp.HomePage()
+        self.page.resize(1280, 800)
+        self.page.show()
+        _app.processEvents()
+        return self.page
+
+    def test_第一排更长_多出来的项目卡向下不动(self):
+        p = self._make(self.NP, self.NI)
+        p._move(self.NP - 1)                       # 最后一张项目卡，下面没东西
+        p._down()
+        self.assertEqual(p.current_index(), self.NP - 1, "下面没有对位就不该动")
+
+    def test_第一排更长_有对位的仍能下去再上来(self):
+        """别为了修边界把正常跨排也堵死"""
+        p = self._make(self.NP, self.NI)
+        p._move(self.NI - 1)                       # 第 NI 张（最后一位传承人的上方）
+        p._down()
+        self.assertEqual(p.current_index(), self.NI - 1 + self.NP, "应当换到第二排同列")
+        p._up()
+        self.assertEqual(p.current_index(), self.NI - 1, "上去应回到第一排同列")
+
+    def test_第二排更长_多出来的传承人卡向上不动(self):
+        """⚠ 这条正是那个潜伏 bug 的判据。
+
+        第二排更长时，尾部的 `_current - _row1` 仍落在**第二排**里；
+        只判 `_current >= _row1` 的话，一"向上"就跳到同排另一张卡上去了。
+        """
+        p = self._make(self.NP2, self.NI2)
+        flat = self.NP2 + self.NI2 - 1             # 最后一张传承人卡，上面没东西
+        p._move(flat)
+        self.assertEqual(p.current_index(), flat, "前提：先站到最后一张")
+        p._up()
+        self.assertEqual(p.current_index(), flat, "上面没有对位就不该动")
+
+    def test_第二排更长_有对位的仍能上去(self):
+        p = self._make(self.NP2, self.NI2)
+        p._move(self.NP2)                          # 第二排第一张，正上方是项目 0
+        p._up()
+        self.assertEqual(p.current_index(), 0, "应当换回第一排同列")
+
+    def test_两排不一样长也不崩(self):
+        """排长差很多时，上下左右各来一遍：不抛异常、索引始终合法"""
+        for n_p, n_i in ((1, 7), (7, 1), (1, 1)):
+            with self.subTest(项目=n_p, 传承人=n_i):
+                p = self._make(n_p, n_i)
+                for fn in (p._next, p._prev, p._up, p._down):
+                    for _ in range(n_p + n_i + 2):
+                        fn()
+                        self.assertTrue(0 <= p.current_index() < p.card_count())
 
 
 class TestActivate(_HomeBase):

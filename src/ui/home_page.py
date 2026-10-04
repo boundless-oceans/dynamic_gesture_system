@@ -519,8 +519,14 @@ class HomePage(BasePage):
         self._move(self._current + 1)
 
     def _up(self):
-        """向上：换到上一排。已在第一排就不动。"""
-        if self._current >= self._row1:
+        """向上：换到上一排同列。对位不存在就（排长不齐）不动。
+
+        ⚠ 后半句不能省。只判 `_current >= _row1` 是不够的：**第二排比第一排长**时，
+        尾部那几张 `_current - _row1` 仍然落在第二排里，一"向上"就跳到同排的
+        另一张卡上 —— 看着像"上去了"，其实还在原地那一排。
+        （8 个对 8 位时正好不触发，所以这毛病能一直躺着。）
+        """
+        if self._current >= self._row1 and self._current - self._row1 < self._row1:
             self._move(self._current - self._row1)
 
     def _down(self):
