@@ -5,13 +5,15 @@
 （旧版是根目录的 test_all.py / test_mw.py，只能手工跑。）
 """
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # 无显示器也能跑
 
-from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QTableWidget, QWidget
 
 _app = None
 
@@ -111,6 +113,95 @@ class TestPagesConstruct(unittest.TestCase):
                              f"{spec['key']} 滑条初值与 config 不一致")
 
 
+class TestLikeReset(unittest.TestCase):
+    """设置页里的「清空点赞计数」
+
+    清空**不可逆**（没有任何别的地方能恢复），所以两条都得守：
+
+      * **没确认就绝不能清** —— 这是会毁掉长期数据的一步
+      * **清完之后要把信号发出去** —— 否则首页角标还留着已经删掉的数字，
+        屏幕上跟存档对不上，而且没人会发现
+    """
+
+    def setUp(self):
+        from src.core.like_store import LikeStore
+        self.sp = _build("src.ui.settings_page", "SettingsPage")
+        self.dir = tempfile.mkdtemp(prefix="likes-reset-")
+        self.store = LikeStore(os.path.join(self.dir, "likes.json"))
+        self.sp.set_like_store(self.store)
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_汇总跟着计数走(self):
+        self.assertIn("还没有", self.sp._like_summary.text())
+        self.store.add("proj:baogong", 3)
+        self.store.add("inh:李绩", 2)
+        self.sp.refresh_like_summary()
+        t = self.sp._like_summary.text()
+        self.assertIn("已有 2 项", t)
+        self.assertIn("共 5 次", t)
+
+    def test_确认框选否就不清(self):
+        self.store.add("proj:baogong", 3)
+        self.sp._ask = lambda *a: False
+        self.sp._on_reset_likes()
+        self.assertEqual(self.store.count("proj:baogong"), 3, "还没确认就把数据清了")
+        self.assertNotIn("已清空", self.sp._like_status.text())
+
+    def test_确认之后清空并发信号(self):
+        self.store.add("proj:baogong", 3)
+        got = []
+        self.sp.likes_reset.connect(lambda: got.append(1))
+        self.sp._ask = lambda *a: True
+        self.sp._on_reset_likes()
+        self.assertEqual(self.store.all_counts(), {})
+        self.assertEqual(got, [1], "清完之后没通知出去 → 首页角标不会更新")
+        self.assertIn("已清空", self.sp._like_status.text())
+        self.assertIn("还没有", self.sp._like_summary.text())
+
+    def test_确认框不能是黑底(self):
+        """⚠ **真实踩过**：主窗口在页面容器上设过 `background: transparent`，
+        而 **Qt 的样式表会传给子控件** —— QMessageBox 是设置页的子窗口，
+        底色跟着变透明，在 Windows 上渲染成**一片纯黑**（实测平均亮度 229 → 3.8）。
+        按钮在哪都看不见，操作员根本没法确认，表现就是**"清空按钮点了没反应"**。
+
+        光读代码看不出来（`QMessageBox.question` 写得好好的），
+        要把它 `grab()` 出来比像素。
+        """
+        host = QWidget()
+        host.setStyleSheet("background: transparent;")     # 模拟主窗口那一层
+        sp = _build("src.ui.settings_page", "SettingsPage")
+        sp.setParent(host)
+        box = sp._confirm_box("清空点赞计数", "将清空全部 3 项。")
+        box.show()
+        _app.processEvents()
+        img = box.grab().toImage()
+        tot = n = 0
+        for y in range(0, img.height(), 4):
+            for x in range(0, img.width(), 4):
+                c = img.pixelColor(x, y)
+                tot += c.red() + c.green() + c.blue()
+                n += 1
+        avg = tot / (n * 3.0)
+        box.close()
+        self.assertGreater(avg, 120,
+                           "确认框整体偏黑（平均亮度 %.0f）—— 底色被继承的样式表弄没了" % avg)
+
+    def test_没有记录时不弹确认框(self):
+        """没东西可清就别弹框 —— 操作员会以为自己点错了。"""
+        called = []
+        self.sp._ask = lambda *a: called.append(1) or True
+        self.sp._on_reset_likes()
+        self.assertEqual(called, [], "没有记录还弹了确认框")
+        self.assertIn("不用清", self.sp._like_status.text())
+
+    def test_没接存档时点按钮不崩(self):
+        self.sp._likes = None
+        self.sp._on_reset_likes()
+        self.sp.refresh_like_summary()
+
+
 @unittest.skipUnless(
     os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "weights",
@@ -191,8 +282,6 @@ class TestMainWindowConstruct(unittest.TestCase):
         **接线** —— 真实页面上的 `_pi` / `_index` / `current_target()` 到底拿不拿得到。
         拿不到就退化成空串，那样**点赞静默不生效**（不报错、看着一切正常）。
         """
-        import shutil
-        import tempfile
         from src import config
         from src.core.like_store import LikeStore
         from src.core.project_assets import slug_of
@@ -248,6 +337,82 @@ class TestMainWindowConstruct(unittest.TestCase):
             self.assertEqual(self.win.likes.all_counts(), before, "设置页不该记点赞")
         finally:
             self.win.likes = saved
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_设置页与主窗口用的是同一个点赞存档(self):
+        """⚠ 设置页自己持有一份引用（`set_like_store`）。主窗口忘了给的话，
+        "清空点赞计数"按钮会**点了没反应**，而且不报错。
+
+        （这条不能靠下面那条端到端用例守 —— 那条为了让用例可重跑，
+        自己会把临时存档再接一次，正好把"主窗口根本没接"这件事盖住。
+        变异验证抓到过。）
+        """
+        self.assertIs(self.win.pages["settings"]._likes, self.win.likes,
+                      "设置页拿到的不是主窗口那个点赞存档")
+
+    def test_首页角标取的是主窗口那个点赞存档(self):
+        """同理：首页是"拉模式"。来源函数没接上、或者接了别的存档，
+        角标就永远是 0 —— 不报错，只是**功能静默失效**。
+
+        ⚠ 用桩、**不往真存档里写** —— 那是展台上的运行数据，测试不许碰。
+        """
+        class _Stub:
+            def count(self, key):
+                return 42
+
+        self.assertIsNotNone(self.win.pages["home"]._like_source,
+                             "首页根本没接上点赞来源")
+        saved, self.win.likes = self.win.likes, _Stub()
+        try:
+            self.assertEqual(self.win._like_count_for("project", 0), 42,
+                             "角标读的不是主窗口那个点赞存档")
+        finally:
+            self.win.likes = saved
+
+    def test_清空点赞会把首页角标也清掉(self):
+        """端到端：清空之后**屏幕上**不能还留着已经删掉的数字。
+
+        ⚠ 主窗口持有 `likes`，设置页也单独持有一份（`set_like_store`）——
+        两处指的是同一个对象，**换成临时存档时必须两处一起换**，
+        只换一处的话这条用例就在测另一个存档了。
+        """
+        from src import config
+        from src.core.like_store import LikeStore
+        from src.ui.main_window import IDX
+
+        d = tempfile.mkdtemp(prefix="likes-reset-e2e-")
+        store = LikeStore(os.path.join(d, "likes.json"))
+        saved_store = self.win.likes
+        saved_sp = self.win.pages["settings"]._likes
+        try:
+            self.win.likes = store
+            self.win.pages["settings"].set_like_store(store)
+
+            # 先在首页第 1 张卡上点个赞
+            self.win.stack.setCurrentIndex(IDX["home"])
+            _app.processEvents()
+            hp = self.win.pages["home"]
+            hp._move(0)
+            _app.processEvents()
+            self.win._cooldown_until = 0.0
+            self.win._static_need_gap = False
+            self.win._static_lg = None
+            self.win._static_count = 0
+            for _ in range(config.STATIC_CONSISTENCY):
+                self.win._on_static({"label": "like", "confidence": 0.99})
+            self.assertGreater(hp._cards[0].like_count(), 0, "点赞没记上")
+
+            # 从设置页清空
+            sp = self.win.pages["settings"]
+            sp._ask = lambda *a: True
+            sp._on_reset_likes()
+
+            self.assertEqual(store.all_counts(), {})
+            self.assertEqual(hp._cards[0].like_count(), 0,
+                             "存档清了，首页角标还留着旧数字")
+        finally:
+            self.win.likes = saved_store
+            self.win.pages["settings"].set_like_store(saved_sp)
             shutil.rmtree(d, ignore_errors=True)
 
     def test_没绑定的静态类不产生任何动作(self):

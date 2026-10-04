@@ -87,6 +87,10 @@ class MainWindow(QMainWindow):
         self._wire_idle_source()
         # 首页卡片上的点赞角标（页面自己来取，见 HomePage.set_like_source）
         self.pages["home"].set_like_source(self._like_count_for)
+        # 设置页里的"清空点赞计数"。清完得让首页角标跟上，
+        # 所以走信号而不是让设置页自己去戳首页 —— 谁该刷新由主窗口说了算
+        self.pages["settings"].set_like_store(self.likes)
+        self.pages["settings"].likes_reset.connect(self.pages["home"].refresh_likes)
         # 全局按钮
         self.bc=QPushButton("关闭摄像头",self); self.bc.setFixedSize(90,28)
         self.bc.setFont(QFont("Microsoft YaHei",9))
