@@ -6,7 +6,7 @@ from PySide6.QtGui import QFont
 from src.core.frame_buffer import FrameBuffer
 from src.core.inference import GestureRecognizer,InferenceThread
 from src.core.static_gesture import StaticGestureRecognizer, action_for as static_action
-from src.core.gesture_mapper import index_to_control, CONTROL_CN
+from src.core.gesture_mapper import index_to_control, CONTROL_CN, STATIC_YIELD_ON_PAGE
 from src.core import project_assets
 from src.ui.camera_widget import CameraWidget
 from src.ui.home_page import HomePage
@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
             self._disp_label=None
             self.cw.set_confidence(None, dc)
         # ---- 静态手势（架构 A：只做加法）----
-        # ⚠ 放在动态那一段**之前**，而且**不 return** —— 这一路只对 ok / 点赞说话，
+        # ⚠ 放在动态那一段**之前**，而且**不 return** —— 这一路只对 ok / 比耶说话，
         #   判成别的类就是弃权，动态照常走。
         st=r.get("static")
         if st is None:
@@ -200,10 +200,25 @@ class MainWindow(QMainWindow):
             return
         c=index_to_control(gid)
         if c: self._ocg(c)
+    def _page_name(self):
+        """当前页面名（IDX 的反查）。"""
+        return {v: k for k, v in IDX.items()}.get(self.stack.currentIndex())
+    def _static_yields_here(self,action):
+        """这个静态动作在当前页面要不要**让位给动态模型**。
+
+        只有一个原因：**手型撞车**。两个模型吃同一块画面，同一个手型会同时喂进
+        两边。"比耶"（✌️）撞的是动态的「双指指向 / 双指双击 → 旋转模型」，
+        而那个动作**只在 3D 页上有效** —— 所以 3D 页把 ✌️ 归动态模型
+        （设置页那张表里，3D 页的"旋转模型"本来就写着用两指）。
+
+        别的页面上动态那个手势本来就是空转，所以只在 3D 页让位。
+        让位时按"条件不成立"处理（顺带把间隙记上），换到别的页面还能正常用。
+        """
+        return STATIC_YIELD_ON_PAGE.get(action)==self._page_name()
     def _on_static(self,st):
         """静态手势通道（架构 A：**只做加法**）。
 
-        只对**绑定的那两个类**（ok / 点赞）说话；判成别的类一律**弃权** ——
+        只对**绑定的那两个类**（ok / 比耶）说话；判成别的类一律**弃权** ——
         动态模型照旧、不受任何影响。所以这个模型判错绝大多数类时产生不了后果。
         """
         if st is None:
@@ -212,6 +227,8 @@ class MainWindow(QMainWindow):
             self._static_need_gap=False; self._static_lg=None; self._static_count=0
             return
         action=static_action(st.get("label"),st.get("confidence",0.0))
+        if action is not None and self._static_yields_here(action):
+            action=None            # 这一页上这个手型归动态模型 → 静态弃权
         if action is None:
             # 触发条件**不成立**了（不是绑定的类，或没够门槛）——
             # 这就是**静态通道自己的间隙**：姿势一松开就记上，下次才允许再触发。
@@ -278,7 +295,7 @@ class MainWindow(QMainWindow):
         # ⚠ 判据刻意是"执行过动作"而不是"模型输出了高置信手势"：访客路过就会产生
         # 高分样本（实测走路有 15.5% 的采样 ≥0.8），用后者的话空闲计时永远被清零。
         self.it.mark_active()
-        cn={v:k for k,v in IDX.items()}[self.stack.currentIndex()]
+        cn=self._page_name()
         # "已执行"提示：屏幕下方居中弹一下（src/ui/toast.py）。
         # 视频页的左/右实际是快退/快进，文案跟着改。
         label = CONTROL_CN.get(g, g)
@@ -288,12 +305,12 @@ class MainWindow(QMainWindow):
         self._toast_text = "✔ 已执行：" + label
         self.toast.show_toast(self._toast_text)
         # ---- 全局动作：**不跟当前页面走**，任何页面上都生效 ----
-        # 这两个只有静态手势（ok / 点赞）会产出，所以放在页面分发之前。
+        # 这两个只有静态手势（ok / 比耶）会产出，所以放在页面分发之前。
         if g=="home":
             self.stack.setCurrentIndex(IDX["home"])
             return
         if g=="guide":
-            # 先切标签页再换页：设置页停在「参数调节」时，访客比个赞会看到一屏滑条，
+            # 先切标签页再换页：设置页停在「参数调节」时，访客比个耶会看到一屏滑条，
             # 莫名其妙。先切好，页面出现时就已经是「手势说明」了（也不会看到跳一下）。
             self.pages["settings"].show_gestures()
             self.stack.setCurrentIndex(IDX["settings"])

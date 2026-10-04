@@ -150,6 +150,14 @@ class _Harness:
     def _on_static(self, st):
         MainWindow._on_static(self, st)
 
+    def _page_name(self):
+        # _ocg 的页面分发与静态通道的"让位"判断都靠它反查页面名
+        return MainWindow._page_name(self)
+
+    def _static_yields_here(self, action):
+        # 静态动作要不要在当前页面让位给动态模型（3D 页的「两指」是旋转模型）
+        return MainWindow._static_yields_here(self, action)
+
     def _on_page_changed(self, idx):
         self._page_idx = idx
         MainWindow._on_page_changed(self, idx)
@@ -554,9 +562,9 @@ class TestStaticChannel(_Base):
 
     def test_中间换手势要重新计数(self):
         self.pose("ok")
-        self.pose("like")          # 不是同一个动作 → 计数从头开始
+        self.pose("peace")         # 不是同一个动作 → 计数从头开始
         self.assertEqual(self.fired(), 0, "换过别的动作，不该凑够两帧")
-        self.pose("like")
+        self.pose("peace")
         self.assertEqual(self.fired(), 1)
 
     def test_举着不动只触发一次(self):
@@ -584,7 +592,7 @@ class TestStaticChannel(_Base):
         这里把**与在用的动态手势手型撞车**的那几类专门列出来 —— 它们最可能
         被真的比划出来（访客做动态手势时静态模型就会看到这些手型）。
         """
-        for label in ("palm", "stop", "fist", "point", "peace", "two_up",
+        for label in ("palm", "stop", "fist", "point", "two_up",
                       "middle_finger", "dislike", "three_gun", "no_gesture"):
             with self.subTest(静态类=label):
                 self.h.pages["home"] = _Calls()
@@ -608,14 +616,51 @@ class TestStaticChannel(_Base):
         self.pose_n("ok", 2)
         self.assertEqual(self.h._page_idx, IDX["home"], "OK 手势应该从任何页面回首页")
 
-    def test_like进手势说明页并切到那一栏(self):
+    def test_比耶进手势说明页并切到那一栏(self):
         """⚠ "先切标签页再换页"这一句不能省 —— 否则操作员上次停在「参数调节」时，
-        访客比个赞会看到一屏滑条。"""
+        访客比个耶会看到一屏滑条。"""
         self.h._page_idx = IDX["detail"]
-        self.pose_n("like", 2)
+        self.pose_n("peace", 2)
         self.assertEqual(self.h._page_idx, IDX["settings"])
         self.assertIn("show_gestures", self.h.page_calls("settings"),
                       "进设置页时必须先把标签页切到「手势说明」")
+
+    def test_比耶在3D页让位给动态模型(self):
+        """⚠ 3D 页上「比耶」不生效。
+
+        比耶是**两指**手型，而 3D 页把「两指」正式用作「旋转模型」（动态的
+        B0B 双指指向 / G09 双指双击）。两个模型吃同一块画面 —— 不让位的话，
+        访客在 3D 页比个耶会同时旋转模型 + 跳去手势说明页，一只手上两个意图。
+        """
+        self.h._page_idx = IDX["viewer"]
+        before = self.fired()
+        self.pose_n("peace", 4)
+        self.assertEqual(self.fired(), before, "3D 页上比耶不该触发任何静态动作")
+        self.assertEqual(self.h._page_idx, IDX["viewer"], "3D 页上比耶不该跳走")
+
+    def test_让位只发生在3D页(self):
+        """别的页面上动态那个手势本来就是空转，所以 ✌️ 照常用。"""
+        for page in ("home", "detail", "inheritor"):
+            with self.subTest(页面=page):
+                self.h._page_idx = IDX[page]
+                self.h._static_need_gap = False
+                self.h._static_lg = None; self.h._static_count = 0
+                self.h._cooldown_until = 0.0
+                before = self.fired()
+                self.pose_n("peace", 2)
+                self.assertEqual(self.fired(), before + 1,
+                                 f"{page} 页上比耶应该能触发")
+                self.assertEqual(self.h._page_idx, IDX["settings"])
+
+    def test_让位之后回到别的页面还能用(self):
+        """让位时按"条件不成立"处理（顺带记上间隙），不能把它卡住。"""
+        self.h._page_idx = IDX["viewer"]
+        self.pose_n("peace", 4)
+        self.assertFalse(self.h._static_need_gap,
+                         "让位应视作条件不成立，否则换页后会被自己的旧状态挡住")
+        self.h._page_idx = IDX["home"]
+        self.pose_n("peace", 2)
+        self.assertEqual(self.h._page_idx, IDX["settings"])
 
     def test_两条通道的间隙互不影响(self):
         """⚠ 这条守着这次最容易写错的一处。

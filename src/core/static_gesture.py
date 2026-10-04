@@ -7,7 +7,7 @@
 
 **架构 A 的含义 —— 本模块只做加法：**
 
-    * 判成 ``ok`` / ``like`` → 交给 main_window 触发动作（见 gesture_mapper.STATIC_TO_CONTROL）
+    * 判成 ``ok`` / ``peace`` → 交给 main_window 触发动作（见 gesture_mapper.STATIC_TO_CONTROL）
     * 判成其余 32 类（含 ``no_gesture``）→ **弃权**，动态模型照旧
 
 所以这个模型判错绝大多数类时**产生不了任何后果**。它**没有否决权** ——
@@ -99,7 +99,7 @@ def action_for(label: str, confidence: float) -> str | None:
 
 
 class StaticGestureRecognizer:
-    """34 类 ResNet18。**只加不减**：认不出 ok/点赞 就什么都不做。"""
+    """34 类 ResNet18。**只加不减**：认不出 ok / 比耶 就什么都不做。"""
 
     def __init__(self):
         # 刻意钉在 CPU：resnet18 单次约 10ms（动态模型是 583ms），
@@ -117,7 +117,7 @@ class StaticGestureRecognizer:
         if not os.path.exists(path):
             self.status = "missing"
             self.status_detail = path
-            print(f"[Static] 未找到静态手势权重，OK/点赞手势不启用: {path}", flush=True)
+            print(f"[Static] 未找到静态手势权重，OK/比耶手势不启用: {path}", flush=True)
             return
         try:
             model = tvm.resnet18(num_classes=NUM_CLASSES)
@@ -131,7 +131,7 @@ class StaticGestureRecognizer:
         except Exception as e:
             self.status = "error"
             self.status_detail = str(e)
-            print(f"[Static] 静态手势权重加载失败，OK/点赞手势不启用: {e}", flush=True)
+            print(f"[Static] 静态手势权重加载失败，OK/比耶手势不启用: {e}", flush=True)
 
     def predict(self, frame: np.ndarray) -> dict | None:
         """对**一帧**做分类。frame 是已经裁好的 RGB 图（裁哪一块由调用方决定，

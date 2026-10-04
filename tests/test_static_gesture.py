@@ -21,7 +21,9 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src import config
-from src.core.gesture_mapper import CONTROL_GESTURES, STATIC_TO_CONTROL
+from src.core.gesture_mapper import (
+    CONTROL_GESTURES, STATIC_TO_CONTROL, STATIC_YIELD_ON_PAGE,
+)
 from src.core.static_gesture import (
     IMG_SIZE, LABELS, MEAN, NO_GESTURE, NUM_CLASSES, PAD_VALUE, STD,
     StaticGestureRecognizer, action_for, preprocess,
@@ -154,11 +156,11 @@ class TestBindingPolicy(unittest.TestCase):
     """
 
     def test_只绑了两个(self):
-        self.assertEqual(set(STATIC_TO_CONTROL), {"ok", "like"})
+        self.assertEqual(set(STATIC_TO_CONTROL), {"ok", "peace"})
 
     def test_职责划分(self):
-        self.assertEqual(STATIC_TO_CONTROL["ok"], "home")     # OK → 返回首页
-        self.assertEqual(STATIC_TO_CONTROL["like"], "guide")  # 点赞 → 手势说明页
+        self.assertEqual(STATIC_TO_CONTROL["ok"], "home")      # OK 手势 → 返回首页
+        self.assertEqual(STATIC_TO_CONTROL["peace"], "guide")  # 比耶 → 手势说明页
 
     def test_绑定的都是合法控制手势(self):
         for label, ctrl in STATIC_TO_CONTROL.items():
@@ -172,19 +174,51 @@ class TestBindingPolicy(unittest.TestCase):
     def test_手型冲突的那几类必须弃权(self):
         """⚠ 这几类**必须**保持不绑 —— 它们的手型与在用的动态手势撞车：
 
-            palm/stop/five 五指张开 ⚔ G07 张开两次（→ 放大）
-            fist           握拳     ⚔ G11 缩小
-            point/one      伸食指   ⚔ B0A 单指指向、G01 单击
-            peace/two_up   两指     ⚔ B0B 双指指向、G09 双指双击（→ 旋转模型）
+            palm/stop     五指张开 ⚔ G07 张开两次（→ 放大）
+            fist          握拳     ⚔ G11 缩小
+            point/one     伸食指   ⚔ B0A 单指指向、G01 单击
+            two_up/…      两指     ⚔ B0B 双指指向、G09 双指双击（→ 旋转模型）
 
         访客做动态手势时，静态模型看到的就是这些手型 —— 一旦绑上，
         "张开两次放大"就会同时触发一个静态动作。
         """
         for label in ("palm", "stop", "fist", "point", "one",
-                      "peace", "peace_inverted", "two_up", "two_up_inverted"):
+                      "peace_inverted", "two_up", "two_up_inverted"):
             with self.subTest(静态类=label):
                 self.assertIsNone(action_for(label, 0.99),
                                   f"{label} 与在用的动态手势手型冲突，不能绑")
+
+    def test_比耶是刻意的例外_它撞车但绑了(self):
+        """⚠ 这条**记录一个例外**，不是漏网。
+
+        `peace`（比耶）的手型与动态的「双指指向 / 双指双击 → 旋转模型」
+        **完全相同**，按上面那条的规矩本该弃权。它之所以能绑，是因为
+        **那个动态动作只在 3D 页上有效** —— 别的页面上它本来就是空转。
+        3D 页怎么处理见下面一条。
+
+        （别再顺手把 `two_up` 也绑上：它撞的是同一个动态手势，但没有这条豁免。）
+        """
+        self.assertIn("peace", STATIC_TO_CONTROL)
+
+    def test_比耶在3D页让位给动态模型(self):
+        """`guide` 在 3D 页要让位。
+
+        不让位的话，访客在 3D 页比个耶会**同时**做两件事：动态模型旋转模型、
+        静态模型跳去手势说明页 —— 一只手上出现两个互相矛盾的意图。
+        而 3D 页的「旋转模型」本来就正式用「两指」，所以那一页优先给动态模型。
+        """
+        self.assertEqual(STATIC_YIELD_ON_PAGE, {"guide": "viewer"})
+
+    def test_让位的页面名必须真实存在(self):
+        """⚠ 页面名写错**不报错**，只是"让位"永远不生效 —— 那种坏法
+        只有真在 3D 页上比个耶才看得出来。"""
+        from src.ui.main_window import IDX
+        for action, page in STATIC_YIELD_ON_PAGE.items():
+            with self.subTest(动作=action):
+                # IDX 是「页面名 → 索引」，让位表里写的必须是其中的页**名**
+                self.assertIn(page, IDX, f"让位的页面名 {page} 不在 IDX 里")
+                # 动作名也必须是真实的，否则这条豁免挂在了一个不存在的动作上
+                self.assertIn(action, CONTROL_GESTURES)
 
     def test_绝不能绑的那几类(self):
         """展台上误触发会很难看，而且对访客毫无操作意义。
@@ -230,7 +264,7 @@ class TestActionFor(unittest.TestCase):
 
     def test_超过门槛返回动作(self):
         self.assertEqual(action_for("ok", 0.99), "home")
-        self.assertEqual(action_for("like", 0.80), "guide")
+        self.assertEqual(action_for("peace", 0.80), "guide")
 
     def test_None也能处理(self):
         self.assertIsNone(action_for(None, 0.99))

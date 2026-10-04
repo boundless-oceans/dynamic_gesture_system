@@ -29,7 +29,7 @@ ONNX_MODEL_PATH = os.path.join(ROOT_DIR, "weights", "gesture.onnx")
 # 两者回答的不是同一个问题，所以**不能拿置信度比大小**（13 类 vs 34 类 softmax，
 # 不是一个尺度，而且都没校准）。分工见 src/core/static_gesture.py。
 #
-# 当前做的是**架构 A：静态模型只做加法** —— 只认 ok / 点赞，判成别的类一律弃权，
+# 当前做的是**架构 A：静态模型只做加法** —— 只认 ok / 比耶，判成别的类一律弃权，
 # 动态模型完全不受影响。它**没有否决权**（不会因为判成 no_gesture 就否掉动态结果），
 # 所以对"走路被认成抛出"一点忙都帮不上，那是另一件事（WORKLOG 第九节第 5 条）。
 STATIC_WEIGHTS_PATH = os.path.join(ROOT_DIR, "weights", "hagrid_resnet18.pth")

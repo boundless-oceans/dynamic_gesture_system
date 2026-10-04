@@ -165,14 +165,24 @@ class TestMainWindowConstruct(unittest.TestCase):
         feed("ok", 0.99)
         self.assertEqual(self.win.stack.currentIndex(), IDX["home"], "OK 手势没回首页")
 
-        # 点赞 → 设置页，且必须先把标签页切到「手势说明」
+        # 比耶 → 设置页，且必须先把标签页切到「手势说明」
         self.win.pages["settings"]._tabs.setCurrentIndex(1)   # 先人为停在「参数调节」
         self.win._cooldown_until = 0.0
         self.win._static_need_gap = False
-        feed("like", 0.99)
+        feed("peace", 0.99)
         self.assertEqual(self.win.stack.currentIndex(), IDX["settings"])
         self.assertEqual(self.win.pages["settings"]._tabs.currentIndex(), 0,
                          "进设置页时没把标签页切到「手势说明」")
+
+        # 但在 3D 页上比耶要让位给动态模型的「旋转模型」
+        self.win.stack.setCurrentIndex(IDX["viewer"])
+        self.win._cooldown_until = 0.0
+        self.win._static_need_gap = False
+        self.win._static_lg = None
+        self.win._static_count = 0
+        feed("peace", 0.99)
+        self.assertEqual(self.win.stack.currentIndex(), IDX["viewer"],
+                         "3D 页上比耶不该跳去手势说明页（那一页的两指是旋转模型）")
 
     def test_没绑定的静态类不产生任何动作(self):
         """端到端再确认一次"弃权" —— 架构 A 的安全感全在这上面。"""
