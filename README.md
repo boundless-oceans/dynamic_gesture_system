@@ -11,7 +11,7 @@
 
 - **界面**：PySide6（含 QtWebEngine 展示 3D）
 - **识别**：两路模型并行 —— **DSTE-Net**（IPN-Hand 13 类，8 帧 RGB，认"手的动作"）
-  与 **ResNet18**（HaGRID 34 类，单帧，认"手的形状"，只负责 OK / 比耶两个手势）
+  与 **ResNet18**（HaGRID 34 类，单帧，认"手的形状"，只负责 OK / 比耶 / 点赞三个手势）
 - **交互**：手势驱动页面导航 + 视频快进快退 + 3D 模型旋转缩放
 - **性能**：**纯 CPU**。动态模型约 0.58s/次、静态模型约 15ms/次（可忽略）
 
@@ -82,7 +82,7 @@
 
 上面那张表认的是"手**刚才做了什么动作**"，靠的是 DSTE-Net 时序模型。
 另外还有一路**静态手势**（HaGRID 34 类 ResNet18），认的是"手**此刻是什么形状**"，
-情况只有两个：
+情况只有三个：
 
 | 手势 | 动作 |
 |---|---|
@@ -191,14 +191,14 @@ python main.py
 |---|---|
 | **摄像头** | 默认**自动选择**——有外接摄像头优先用外接，否则用笔记本自带（`config.CAMERA_AUTO_SELECT`）|
 | **权重** | `weights/TSQ_ipnhand_RGB_resnet50_shift0.50_blockres_avg_segment8_e50.pth`（**不在版本库中**，见[第五节](#五模型说明)）|
-| **静态手势权重** | `weights/hagrid_resnet18.pth`（约 89MB，**不在版本库中**）。缺失时只是**不启用 OK / 比耶两个手势**，其余完全不受影响 |
+| **静态手势权重** | `weights/hagrid_resnet18.pth`（约 89MB，**不在版本库中**）。缺失时只是**不启用 OK / 比耶 / 点赞三个手势**，其余完全不受影响 |
 | **视频** | `assets/videos/**`（**不在版本库中**，见[第四节](#四素材与生成脚本)）|
 | **3D 模型** | `assets/models/*.glb`（**不在版本库中**，可用脚本生成）|
 
 > 动态权重缺失时程序**不会静默降级**：会弹窗说明并停用手势识别（界面仍可用鼠标操作）。
 > 随机初始化的模型照样输出"看着挺像"的置信度，静默错误最难排查。
 >
-> 静态权重缺失则是**静默不启用**（只在日志里记一行）—— 它只是两个附加手势，
+> 静态权重缺失则是**静默不启用**（只在日志里记一行）—— 它只是三个附加手势，
 > 不该因为没拷这一个文件就让整个展台起不来。
 
 ---
@@ -251,7 +251,12 @@ dynamic_gesture_system/
 │   ├── test_gesture_mapper.py  13 类索引与映射
 │   ├── test_config_tuning.py   现场调参文件的载入与容错
 │   ├── test_data_integrity.py  项目↔素材一致性
-│   ├── test_pages_construct.py 页面构造冒烟（含主窗口）
+│   ├── test_pages_construct.py 页面构造冒烟（含主窗口 / 点赞清零端到端）
+│   ├── test_camera_shutdown.py 摄像头线程的启停语义
+│   ├── test_paths.py           运行期路径：开发时指仓库根、打包后指 exe 目录
+│   ├── test_logging.py         日志落盘：print 重定向 / 幂等 / 无控制台不崩 / 体积上限
+│   ├── test_web_util.py        网页页的两个共用工具（JS 控制台转发 / 本地 URL 防缓存）
+│   ├── test_app_icon.py        应用图标：文件有效、尺寸齐、Qt 真能加载
 │   ├── check_weights.py        权重结构诊断（手工）
 │   └── manual/                 需要摄像头/显示器的交互式冒烟脚本
 ├── weights/                    模型权重（未入库）
@@ -492,10 +497,11 @@ IDLE_LADDER = [
 | `HOME_TOP_RESERVE_PX` | 首页卡片区要为右上角摄像头悬浮窗让开的高度 | 276 |
 | `HOME_SELECTED_SCALE` / `HOME_SELECT_ANIM_MS` | 选中卡的放大倍数 / 过渡时长（0 = 关掉）| 1.08 / 200ms |
 | `HOME_CARD_SHEEN` / `HOME_CARD_SHEEN_MS` | 选中卡上的光条 / 周期 | True / 2800ms |
-| `STATIC_CONFIDENCE_THRESHOLD` | 静态手势（OK / 比耶）的触发门槛（**现场可调**）| **0.8** |
-| `STATIC_CONSISTENCY` | 静态手势需连续几帧才触发（1 = 一帧即触发）| **2** ⚠️ 未实测 |
+| `LIKE_COUNT_PATH` | 点赞计数存档（运行时数据，已 gitignore）| `likes.json` |
+| `STATIC_CONFIDENCE_THRESHOLD` | 静态手势（OK / 比耶 / 点赞）的触发门槛（**现场可调**）| **0.8** |
+| `STATIC_CONSISTENCY` | 静态手势需连续几帧才触发，三个手势共用（1 = 一帧即触发）| **2** |
 | `STATIC_INPUT` | 静态模型吃哪块画面：`zone` 中央交互区 / `full` 整帧 | `zone` |
-| `CAMERA_SHOW_STATIC` | 悬浮窗上是否显示静态模型的读数（**诊断用**）| True |
+| `CAMERA_SHOW_STATIC` | 悬浮窗上是否显示静态模型的读数（**诊断用**，验完应关掉）| True |
 
 > 识别偏慢/偏抖时：优先调 `CONFIDENCE_THRESHOLD`、`SMOOTH_FRAMES`、`ACTION_COOLDOWN_MS`。
 >
@@ -530,14 +536,14 @@ IDLE_LADDER = [
 ## 七、测试
 
 ```bash
-python -m unittest discover -s tests -t .        # 全部：322 个用例
+python -m unittest discover -s tests -t .        # 全部：390 个用例
 python -m unittest tests.test_gesture_gate -v    # 单个模块
 ```
 
 标准库 `unittest`，**不需要额外依赖**。GUI 用例通过 `QT_QPA_PLATFORM=offscreen` 离屏运行，
 不需要显示器和摄像头。
 
-> 徽章上的 `tests-104` 是写作时的快照；实际数量以 `Ran N tests` 为准（现在 322 个）。
+> 徽章上的 `tests-104` 是写作时的快照；实际数量以 `Ran N tests` 为准（现在 390 个）。
 
 几处值得一说的测法：
 
@@ -673,10 +679,15 @@ python -m unittest tests.test_gesture_gate -v    # 单个模块
   **整块中央交互区**（没有先检测手再裁剪，为的是不引入 MediaPipe —— 它要求把
   protobuf 降到 <5，会动到共享环境）。这套做法够不够，要靠现场拿悬浮窗上那行
   诊断读数核对（`CAMERA_SHOW_STATIC`），见[第三节](#三目录结构)上面的说明
-- **静态手势没有"否决权"**：现在只做加法（只认 OK / 比耶，判成别的类一律弃权）。
+- **静态手势没有"否决权"**：现在只做加法（只认 OK / 比耶 / 点赞，判成别的类一律弃权）。
   它自带 `no_gesture` 类，本可以用它来否掉动态模型的误判、顺带治"走路被误识别"，
   但那会把"过去 0.6 秒的手势动作"和"此刻的手型"两个不同时间尺度混在一起，
   可能剪掉真手势的尾巴，所以**这一层没做**，留给实测之后再说
+
+- **点赞（👍）的「动作冲突」仍在**：竖拇指的**手型**不与任何在用动态手势撞车，但
+  **为了比这个手势把手抬起来，"抬"这个动作本身会被动态模型认成「向左抛出」或「单击」
+  —— 一次点赞可能顺带翻一页**。那是**动作**冲突、跟页面无关，所以没法像「比耶」那样
+  靠"在 3D 页让位"绕开（见 `docs/MECHANISMS.md` §1.11）。要治得治动态那一侧，**未做**
 
 **已规划、尚未开工**
 
