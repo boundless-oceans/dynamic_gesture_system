@@ -1,8 +1,8 @@
 """FBX → GLB 批量转换（供 viewer.html 用 three.js 加载）
 
 用法（普通 Python 运行即可，会自动调用 Blender 无头模式）：
-    python tools/fbx_to_glb.py                # 转换全部 6 个项目
-    python tools/fbx_to_glb.py hulu luju      # 只转指定项目
+    python tools/fbx_to_glb.py                     # 转换 JOBS 里的全部项目
+    python tools/fbx_to_glb.py guqin caihuitiejin  # 只转指定项目
 
 源素材在 F 盘资料里（本机路径，见 JOBS），产物写到 assets/models/<slug>.glb。
 本文件同时充当 Blender 侧的 worker：被 Blender 调用时（--background --python 本文件 -- 源 目标）
@@ -26,8 +26,15 @@ OUT_DIR = os.path.join(REPO, "assets", "models")
 BLENDER = r"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe"
 
 # 源 FBX（本机 F 盘资料）
+# ⚠ `_U` 指向的 `_extracted\\…` 是**当初临时解包出来的目录，现在已经被清掉了** ——
+#   前 5 个 slug 的源路径**当前在盘上不存在**，只有 wushantiezi（二期）和下面
+#   新加的两个还取得到。要重建前 5 个的模型，得先把源重新找出来（一期模型另有一份
+#   在 `文化馆一期资料\\模型文件\\` 下，但目录结构与文件名都对不上，不是改一行能接上的）。
 _U = r"F:\非遗资料\_extracted\yuanma\LuZhouFeiYi_2019.4.30\Assets\Model"
 _W = r"F:\非遗资料\文化馆二期\lzfy-models\models"
+# 一期"合肥文化馆非遗展品三维模型FBX文件0910"：2019 年那批 H5 的展品模型，
+# 编号目录（3.琴 / 6.宫式彩绘贴金…），`.fbm` 同级就是贴图（BaseColor / Normal）。
+_Y = r"F:\非遗资料\文化馆一期资料\模型文件\合肥文化馆非遗展品三维模型FBX文件0910"
 JOBS = {
     "hulu":          os.path.join(_U, "hulu", "hulu.fbx"),
     "liumingchuan":  os.path.join(_U, "liumingchuan", "刘铭传.fbx"),
@@ -35,6 +42,8 @@ JOBS = {
     "luju":          os.path.join(_U, "luju", "庐剧94.fbx"),
     "huobihua":      os.path.join(_U, "huobihua", "火笔画94.fbx"),
     "wushantiezi":   os.path.join(_W, "wushantiezi", "wushantiezi.FBX"),
+    "guqin":         os.path.join(_Y, "3.琴96.fbm", "琴.fbx"),
+    "caihuitiejin":  os.path.join(_Y, "6.宫式彩绘贴金制作技艺.fbm", "94宫式彩绘贴金制作技艺.fbx"),
 }
 
 
@@ -123,8 +132,13 @@ def main():
             print(f"[{name}] ✗ 源缺失: {src}"); continue
         dst = os.path.join(OUT_DIR, f"{name}.glb")
         print(f"[{name}] 转换中... {os.path.getsize(src)/1024/1024:.1f}MB")
+        # ⚠ 必须显式 encoding="utf-8"：Blender 往 stdout 打的是 UTF-8，
+        #   而 Windows 上 `text=True` 默认按 GBK 解 —— 读取线程会抛 UnicodeDecodeError，
+        #   此时 `r.stdout` 变成 None，**下面那行 `r.stdout[-500:]` 就跟着崩**。
+        #   也就是"转换成功时无感，一失败连错误信息都打不出来"。
         r = subprocess.run([BLENDER, "--background", "--python", os.path.abspath(__file__),
-                            "--", src, dst], capture_output=True, text=True)
+                            "--", src, dst], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
         ok = os.path.exists(dst)
         print(f"[{name}] {'✓' if ok else '✗'} {dst if ok else r.stdout[-500:]}")
 

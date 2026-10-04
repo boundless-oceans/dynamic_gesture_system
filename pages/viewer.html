@@ -43,6 +43,32 @@ function init() {
 // 取景距离倍数（模型已在导出时归一化，通常不需要；个别想更小就调这个）
 const FIT_SCALE = {};
 
+// ── 极扁模型的初始摆位 ────────────────────────────────────────────────
+// ⚠ **必须按"薄的是哪根轴"分情况**，不能只看扁平比。
+//   相机的 y 和模型中心齐平，所以"薄轴"决定了你看到的是面还是边：
+//
+//     薄轴 = Z（匾额 / 挂屏）—— 面本来就朝着镜头，给一点侧倾露出厚度即可
+//     薄轴 = Y（古琴这类**平躺**的）—— 原本是"俯视一条边"，一倾斜就成了
+//                                    **从下往上仰望**（实测报过的毛病）
+const FLAT_RATIO    = 5;             // 超过它才算"极扁"
+const FLAT_LEAN     = -0.35;         // 薄轴 = Z：一点侧倾
+const FLAT_STAND_UP = 1.30;          // 薄轴 = Y：平躺着 → 立起来才看得见正面
+const FLAT_YAW      = Math.PI / 2;   // 长边正插向镜头 → 先转开，免得只看得到端头
+
+// 初始摆位（纯函数，只吃三个边长）。
+// 刻意**不碰 THREE**，这样 tests/test_viewer_pose.py 能用 node 直接跑这一份真代码，
+// 而不是在 Python 里照抄一遍规则 —— 抄的那份永远测不出 JS 改坏了。
+function initialPose(sx, sy, sz) {
+    const maxDim = Math.max(sx, sy, sz) || 1;
+    const minDim = Math.max(Math.min(sx, sy, sz), 1e-6);
+    if (maxDim / minDim <= FLAT_RATIO) { return {x: 0, y: 0, branch: '-'}; }
+    // 薄的是哪根轴，决定怎么摆（理由见上面那组常量）
+    let r = {x: FLAT_LEAN, y: 0, branch: 'lean'};
+    if (sy <= sx && sy <= sz) { r.x = FLAT_STAND_UP; r.branch = 'stand-up'; }
+    if (sz >= sx && sz >= sy) { r.y = FLAT_YAW;      r.branch += '+yaw'; }
+    return r;
+}
+
 // 量包围盒：骨骼模型（人偶）要按"骨骼世界坐标"算，
 // 否则 SkinnedMesh 的静态几何盒会严重偏小（相机会钻进模型、旋转轴也会错）
 function measureBox(root) {
@@ -66,17 +92,25 @@ function measureBox(root) {
     return box;
 }
 
-// 把模型装进 Group：偏移 Group 使模型居中；之后旋转 Group = 绕模型自身中心旋转
+// 把模型装进 Group：把**子节点**挪到 Group 原点上，使模型中心落在旋转轴上；
+// 之后旋转 Group = 绕模型自身中心旋转
 function fitCameraToGroup(group, name) {
     const box = measureBox(group);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    group.position.sub(center);            // 居中（对内部带偏移的模型也有效）
+    // ⚠ 偏移量要加在**子节点**上，不能写 `group.position.sub(center)`：
+    //   那样只有在"不旋转"时才居中 —— Group 是绕自己的原点转的，
+    //   而那个原点此时被挪到了 −center，于是模型会绕着**旁边**一个点甩出去。
+    //   现有模型导出时中心都在原点（center≈0）所以一直没暴露；
+    //   古琴的中心是 (0, 0.087, 0)，一给倾斜就明显跑偏。
+    group.children.forEach(function (c) { c.position.sub(center); });
 
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const minDim = Math.max(Math.min(size.x, size.y, size.z), 1e-6);
-    // 极扁模型（匾额/挂屏）给初始侧倾，避免自转时总是侧对镜头
-    if (maxDim / minDim > 5) { group.rotation.x -= 0.35; }
+    const dims = [size.x, size.y, size.z];
+    const maxDim = Math.max(dims[0], dims[1], dims[2]) || 1;
+    const minDim = Math.max(Math.min(dims[0], dims[1], dims[2]), 1e-6);
+    const pose = initialPose(size.x, size.y, size.z);
+    group.rotation.x += pose.x;
+    group.rotation.y += pose.y;
 
     const fov = camera.fov * Math.PI / 180;
     const scale = FIT_SCALE[name] || 1;
@@ -89,7 +123,7 @@ function fitCameraToGroup(group, name) {
 
     console.log('[viewer] ' + name + ' | size=' + maxDim.toFixed(2) +
                 ' | scale=' + scale + ' | dist=' + dist.toFixed(2) +
-                ' | flat=' + (maxDim / minDim > 5));
+                ' | flat=' + (maxDim / minDim > FLAT_RATIO) + ' | pose=' + pose.branch);
 }
 
 const loader = new THREE.GLTFLoader();

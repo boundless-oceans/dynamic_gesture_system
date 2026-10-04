@@ -30,6 +30,12 @@ M2 = os.path.join(MAT, "文化馆二期")
 LJ = os.path.join(MAT, "文化馆项目资料整理", "庐剧")
 LM = os.path.join(MAT, "文化馆项目资料整理", "刘铭传故事")
 LM_GJ = os.path.join(LM, "1 刘铭传故居")
+GQ = os.path.join(MAT, "文化馆项目资料整理", "古琴斫制")
+GQ_ZG = os.path.join(GQ, "古琴斫制朱志刚")
+CH = os.path.join(MAT, "文化馆项目资料整理", "宫式彩绘贴金制作技艺")
+# ⚠ 这个目录名是素材盘上就这么写的（"贴**近**"，项目正式名是"贴**金**"），
+#   是文化馆归档时的笔误。**别顺手改** —— 改了脚本就找不到目录了。
+CH_LH = os.path.join(CH, "宫式彩绘贴近刘大宏")
 
 THUMB = 500
 DETAIL = 1200
@@ -117,6 +123,26 @@ MAPPING = {
             os.path.join(M2, "吴山铁字", "省级项目 吴山铁字 省级传承人 郑书山", "铁字书法《望庐山瀑布》 (1).jpg"),
         ],
     },
+    "guqin": {
+        # 卡片图用一张红漆成品琴：作品照拍的都是"琴摆在屋里"，
+        # 这一张在 8 张卡里色彩最跳、主体最满。
+        "thumb": os.path.join(GQ_ZG, "作品", "4R7A9114.JPG"),
+        # 第 3 格是二维码，所以详情只有 2 张：一张人（刨木）+ 一张琴（成品）
+        "details": [
+            os.path.join(GQ_ZG, "01修形", "4R7A8076.JPG"),   # 朱志刚刨木（人物 + 工艺）
+            os.path.join(GQ_ZG, "作品", "4R7A9087.JPG"),     # 成品琴（深色木）
+        ],
+    },
+    "caihuitiejin": {
+        # 这个项目的 `照片\` 是**整理好的**一组：文件名自带序号和内容说明，
+        # 是这批素材里最省事的一组。卡片用红底棚拍的彩绘立像，主体填满画面
+        # （也是全批唯一的竖构图之一）。
+        "thumb": os.path.join(CH, "照片", "4号韦陀菩萨.JPG"),
+        "details": [
+            os.path.join(CH, "照片", "1号黄山太平.jpg"),        # 牌坊实景 —— 工艺用在建筑上
+            os.path.join(CH, "照片", "2号非遗上大作业.jpg"),    # 龙凤纹样特写 —— 工艺本身
+        ],
+    },
 }
 
 
@@ -142,15 +168,30 @@ PORTRAITS = {
     "wushantiezi": {"src": os.path.join(M2, "吴山铁字", "省级项目 吴山铁字 省级传承人 郑书山",
                                         "郑书山工作照a (1).JPG"),
                     "fallback": {"idx": 2}},
+    # ⚠ guqin **故意不在这里**，不是漏了：
+    #   ① 中列只在"没有介绍视频"时才用 portrait 充位，而古琴有介绍片；
+    #   ② 整批古琴素材里**没有竖构图的照片**（作品照全是横的），硬塞一张横图
+    #      进竖长的中列只会被裁得七零八落；
+    #   ③ `project_assets.portrait_path()` 在文件不存在时会**回退到 thumb.jpg**，
+    #      所以不生成是安全的、不是空窗。
+    #   ④ 素材盘里那个 `古琴斫制\刘大宏传习基地照片`（竖图 133 张）**不能用** ——
+    #      那是刘大宏（彩绘贴金的传承人）的传习基地，归档时挂错了地方，
+    #      里面是木雕/镏金家具/彩绘屏风，跟古琴没关系。
+    "caihuitiejin": {"src": os.path.join(CH, "照片", "9号滨湖会展中心展览.jpg"),
+                     "fallback": {"idx": 2}},
 }
 
 
 # 项目二维码（扫一扫了解详情）；火笔画、吴山铁字暂无对应二维码
+# ⚠ 文件名就是文化馆那份"十个二维码"里的原名 —— 那份清单同时也是**项目名单**，
+#   挑新项目时以它为准比按"图片多不多"猜靠谱。
 QRS = {
     "hulu": "葫芦雕刻.png",
     "liumingchuan": "刘铭传故事.png",
     "baogong": "包公故事.png",
     "luju": "庐剧.png",
+    "guqin": "古琴.png",
+    "caihuitiejin": "彩绘贴金.png",
 }
 
 
@@ -212,6 +253,21 @@ SLIDES = {
         os.path.join(M2, "吴山铁字", "吴山铁字照片 邓之元",
                      "镇文广站工作人员2020年于铁硏居拍摄，图为省级非遗传承人邓之元为吴山小学的学生讲解吴山铁字的相关历史.jpg"),
     ],
+    # 轮播与详情页各用各的，且**彼此不重样**：挖樘 → 刮灰 → 刷漆 → 成品挂墙，
+    # 正好是一条完整的斫制工序线（详情页那两张是"人"和"琴"，不重复）。
+    "guqin": [
+        os.path.join(GQ_ZG, "02挖樘", "4R7A8171.JPG"),
+        os.path.join(GQ_ZG, "05刮灰", "4R7A8273.JPG"),
+        os.path.join(GQ_ZG, "06刷漆", "4R7A8529.JPG"),
+        os.path.join(GQ_ZG, "作品", "4R7A9095.JPG"),
+    ],
+    # 贴金箔特写 → 艺人工作 → 展会 → 庙宇彩绘应用（详情页那两张是牌坊和纹样）
+    "caihuitiejin": [
+        os.path.join(CH_LH, "05贴金描金", "4R7A5087.JPG"),
+        os.path.join(CH_LH, "05贴金描金", "4R7A4991.JPG"),
+        os.path.join(CH, "照片", "5号安徽工艺精品展.jpg"),
+        os.path.join(CH, "照片", "3号肥东马政寺天王.jpg"),
+    ],
 }
 
 
@@ -220,14 +276,25 @@ def build_slides():
     print("\n[轮播图]")
     for slug, srcs in SLIDES.items():
         out_dir = os.path.join(OUT_ROOT, slug)
-        # 先清掉旧的 slide*.jpg，避免源减少时残留多余图
+        # ⚠ **先确认源都在，再清空**。原来是一上来就清、清完才发现源缺失 ——
+        #   于是已入库的旧图被删掉且补不回来。实测踩过一次：包公那两张的源
+        #   （`_extracted` 里的"巧断浮江尸""包公吃鱼"）已经不在素材盘上了，
+        #   跑一次脚本就把 `baogong/slide1.jpg` `slide2.jpg` 删了，
+        #   是 `git status` 上看见两条 D 才发现的。
+        #   有一个源缺失就整组跳过（宁可留着旧的，也不要删成空的）。
+        absent = [s for s in srcs if not os.path.exists(s)]
+        if absent:
+            print(f"  ✗ {slug} 整组跳过：{len(absent)}/{len(srcs)} 个源缺失，"
+                  f"保留现有 slide*.jpg 不动")
+            for s in absent:
+                print(f"      {os.path.basename(s)}")
+            continue
+        # 源齐了才清旧的 slide*.jpg，避免源减少时残留多余图
         if os.path.isdir(out_dir):
             for f in os.listdir(out_dir):
                 if f.startswith("slide") and f.lower().endswith((".jpg", ".png")):
                     os.remove(os.path.join(out_dir, f))
         for i, s in enumerate(srcs, 1):
-            if not os.path.exists(s):
-                print(f"  ✗ {slug} slide{i} 源缺失: {os.path.basename(s)}"); continue
             size, n = convert(s, os.path.join(out_dir, f"slide{i}.jpg"), DETAIL)
             print(f"  ✓ {slug}/slide{i}.jpg {size} {n//1024}KB  <- {os.path.basename(s)[:38]}")
 
@@ -286,18 +353,28 @@ def main():
         if pspec:
             ps, crop = pspec["src"], pspec.get("crop")
             note = ""
+            pdst = os.path.join(out_dir, "portrait.jpg")
             if not os.path.exists(ps):
-                # 兜底：原始素材不可用时，用仓库内已生成的详情图
-                fb = pspec.get("fallback")
-                local = os.path.join(out_dir, f"{fb['idx']}.jpg") if fb else ""
-                if local and os.path.exists(local):
-                    ps, crop = local, fb.get("crop")
-                    note = "（兜底：用仓库内详情图）"
+                if os.path.exists(pdst):
+                    # ⚠ 主源不可用（素材盘没插、或归档里已经没这个文件了）而产物**已入库** ——
+                    #   保留它，**别拿兜底图盖掉**。兜底是"补空洞"用的，不是"降级替换"：
+                    #   一旦盖上，仓库里就从此是一张次一档的图，而且看不出发生过什么
+                    #   （实测：包公的主源在 `_extracted` 里已缺失，跑一次脚本
+                    #     portrait.jpg 就变成了由 3.jpg 兜底生成的版本）。
+                    print("  - portrait.jpg 主源缺失，保留现有产物（不拿兜底覆盖）")
+                    ps = None
                 else:
-                    print(f"  ✗ portrait 源缺失且无兜底: {ps}")
-                    missing.append((slug, "portrait", ps)); ps = None
+                    # 兜底：原始素材不可用、且产物还没有，用仓库内已生成的详情图顶上
+                    fb = pspec.get("fallback")
+                    local = os.path.join(out_dir, f"{fb['idx']}.jpg") if fb else ""
+                    if local and os.path.exists(local):
+                        ps, crop = local, fb.get("crop")
+                        note = "（兜底：用仓库内详情图）"
+                    else:
+                        print(f"  ✗ portrait 源缺失且无兜底: {ps}")
+                        missing.append((slug, "portrait", ps)); ps = None
             if ps:
-                size, n = convert(ps, os.path.join(out_dir, "portrait.jpg"), THUMB, crop)
+                size, n = convert(ps, pdst, THUMB, crop)
                 print(f"  ✓ portrait.jpg {size} {n//1024}KB  <- {os.path.basename(ps)}{note}")
     copy_qrs()
     build_slides()
